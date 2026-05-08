@@ -157,21 +157,21 @@ func (l *Lexer) readString() string {
 
 func (l *Lexer) isKeyword(ident string) (TokenType, bool) {
 	keywords := map[string]TokenType{
-		"PROGRAM":            TokenIdent,
-		"LIBRARY":            TokenIdent,
-		"GO_LIBRARY":         TokenIdent,
-		"PEERDIR":            TokenIdent,
-		"SRCS":               TokenIdent,
-		"RECURSE":            TokenIdent,
-		"SET":                TokenIdent,
-		"END":                TokenIdent,
-		"RECURSE_FOR_TESTS":  TokenIdent,
-		"IF":                 TokenIdent,
-		"ELSE":               TokenIdent,
-		"ENDIF":              TokenIdent,
-		"LICENSE":            TokenIdent,
-		"VERSION":            TokenIdent,
-		"BUILD_ONLY_IF":      TokenIdent,
+		"PROGRAM":           TokenIdent,
+		"LIBRARY":           TokenIdent,
+		"GO_LIBRARY":        TokenIdent,
+		"PEERDIR":           TokenIdent,
+		"SRCS":              TokenIdent,
+		"RECURSE":           TokenIdent,
+		"SET":               TokenIdent,
+		"END":               TokenIdent,
+		"RECURSE_FOR_TESTS": TokenIdent,
+		"IF":                TokenIdent,
+		"ELSE":              TokenIdent,
+		"ENDIF":             TokenIdent,
+		"LICENSE":           TokenIdent,
+		"VERSION":           TokenIdent,
+		"BUILD_ONLY_IF":     TokenIdent,
 	}
 
 	tt, ok := keywords[ident]

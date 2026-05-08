@@ -251,8 +251,8 @@ func TestPathIdentifiers(t *testing.T) {
 
 func TestTokenTypeString(t *testing.T) {
 	tests := []struct {
-		token   TokenType
-		want    string
+		token TokenType
+		want  string
 	}{
 		{TokenEOF, "EOF"},
 		{TokenIdent, "IDENT"},
