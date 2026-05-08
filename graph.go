@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"sync"
 )
 
 type ParseContext struct {
@@ -17,6 +18,7 @@ type Graph struct {
 	Nodes   []*GraphNode
 	Inputs  []string
 	Context ParseContext
+	mu      sync.Mutex
 }
 
 type Command struct {
@@ -83,9 +85,13 @@ func NewUID(moduleDir []byte) string {
 }
 
 func (g *Graph) AddNode(node *GraphNode) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.Nodes = append(g.Nodes, node)
 }
 
 func (g *Graph) AddInput(path string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.Inputs = append(g.Inputs, path)
 }
