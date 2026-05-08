@@ -587,6 +587,15 @@ func refineColorIDs(reference, generated *ValidationGraph, refColors, genColors 
 
 func graphColorSignatures(graph *ValidationGraph, colors []string) []string {
 	signatures := make([]string, len(graph.Nodes))
+	dependentColors := make([][]string, len(graph.Nodes))
+
+	for i, node := range graph.Nodes {
+		for _, dep := range node.Deps {
+			if depIndex, ok := graph.Index[dep]; ok {
+				dependentColors[depIndex] = append(dependentColors[depIndex], colors[i])
+			}
+		}
+	}
 
 	for i, node := range graph.Nodes {
 		depColors := make([]string, 0, len(node.Deps))
@@ -600,7 +609,8 @@ func graphColorSignatures(graph *ValidationGraph, colors []string) []string {
 		}
 
 		sort.Strings(depColors)
-		signatures[i] = node.identityKey + "\x00" + strings.Join(depColors, "\x00")
+		sort.Strings(dependentColors[i])
+		signatures[i] = node.identityKey + "\x00deps\x00" + strings.Join(depColors, "\x00") + "\x00dependents\x00" + strings.Join(dependentColors[i], "\x00")
 	}
 
 	return signatures
@@ -664,10 +674,25 @@ func nodeStableFingerprint(graph *ValidationGraph, index int, colors []string) s
 	}
 	sort.Strings(depColors)
 
+	dependentColors := make([]string, 0)
+	for _, candidate := range graph.Nodes {
+		for _, dep := range candidate.Deps {
+			if dep == node.UID {
+				if candidateIndex, ok := graph.Index[candidate.UID]; ok {
+					dependentColors = append(dependentColors, colors[candidateIndex])
+				} else {
+					dependentColors = append(dependentColors, "<missing>")
+				}
+			}
+		}
+	}
+	sort.Strings(dependentColors)
+
 	return canonicalJSON(map[string]any{
-		"identity": node.identityKey,
-		"deps":     depColors,
-		"index":    index,
+		"identity":   node.identityKey,
+		"deps":       depColors,
+		"dependents": dependentColors,
+		"index":      index,
 	})
 }
 
