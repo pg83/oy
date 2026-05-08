@@ -54,13 +54,14 @@ type File struct {
 
 // Module represents a complete ya.make module definition with all its attributes.
 type Module struct {
-	Type         ModuleType
-	SourcePath   string
-	Dependencies []string
-	Sources      []string
-	Properties   map[string]string
-	Conditionals []*ConditionalBlock
-	Recursions   []*RecurseDirective
+	Type           ModuleType
+	SourcePath     string
+	Dependencies   []string
+	Sources        []string
+	Properties     map[string]string
+	Conditionals   []*ConditionalBlock
+	Recursions     []*RecurseDirective
+	BuildCondition *BuildCondition
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
