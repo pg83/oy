@@ -16,6 +16,7 @@ const (
 	TokenAmpersandAmpersand
 	TokenPipePipe
 	TokenBang
+	TokenEquals
 )
 
 func (t TokenType) String() string {
@@ -36,6 +37,8 @@ func (t TokenType) String() string {
 		return "||"
 	case TokenBang:
 		return "!"
+	case TokenEquals:
+		return "="
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}
@@ -269,6 +272,11 @@ func (l *Lexer) NextToken() (Token, error) {
 		startCol := l.col
 		ident := l.readIdent()
 		return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
+	}
+
+	if ch == '=' {
+		l.read()
+		return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: l.col}, nil
 	}
 
 		if ch >= '0' && ch <= '9' {

@@ -140,7 +140,8 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
 	moduleDir = strings.TrimPrefix(moduleDir, "/")
 
 	for _, module := range file.Modules {
-		module.SourcePath = filepath.Join(moduleDir, module.SourcePath)
+		module.SourcePath = strings.TrimPrefix(module.SourcePath, be.sourceRoot)
+		module.SourcePath = strings.TrimPrefix(module.SourcePath, "/")
 
 		buildContext := be.createBuildContext()
 		resolvedModule := ResolveConditionals(module, buildContext, NewMemoryVariableSet())
