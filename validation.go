@@ -412,13 +412,11 @@ func (c *graphComparison) buildUIDMapping() {
 		return
 	}
 
-	refColors := initialColors(c.reference.Nodes)
-	genColors := initialColors(c.generated.Nodes)
+	refColors, genColors := initialColorIDs(c.reference.Nodes, c.generated.Nodes)
 	maxIterations := max(len(c.reference.Nodes), len(c.generated.Nodes)) + 1
 
 	for i := 0; i < maxIterations; i++ {
-		nextRef := refineColors(c.reference, refColors)
-		nextGen := refineColors(c.generated, genColors)
+		nextRef, nextGen := refineColorIDs(c.reference, c.generated, refColors, genColors)
 
 		if equalStringSlices(nextRef, refColors) && equalStringSlices(nextGen, genColors) {
 			break
@@ -447,8 +445,8 @@ func (c *graphComparison) buildUIDMapping() {
 			continue
 		}
 
-		sortNodeIndexes(c.reference.Nodes, refIndexes, refColors)
-		sortNodeIndexes(c.generated.Nodes, genIndexes, genColors)
+		sortNodeIndexes(c.reference, refIndexes, refColors)
+		sortNodeIndexes(c.generated, genIndexes, genColors)
 
 		for i, refIndex := range refIndexes {
 			genIndex := genIndexes[i]
@@ -534,18 +532,29 @@ func (c *graphComparison) mapUniqueLooseKeys() {
 	}
 }
 
-func initialColors(nodes []ValidationNode) []string {
-	colors := make([]string, len(nodes))
+func initialColorIDs(refNodes, genNodes []ValidationNode) ([]string, []string) {
+	refSignatures := make([]string, len(refNodes))
+	genSignatures := make([]string, len(genNodes))
 
-	for i := range nodes {
-		colors[i] = nodes[i].identityKey
+	for i := range refNodes {
+		refSignatures[i] = refNodes[i].identityKey
+	}
+	for i := range genNodes {
+		genSignatures[i] = genNodes[i].identityKey
 	}
 
-	return colors
+	return compactColorIDs(refSignatures, genSignatures)
 }
 
-func refineColors(graph *ValidationGraph, colors []string) []string {
-	next := make([]string, len(graph.Nodes))
+func refineColorIDs(reference, generated *ValidationGraph, refColors, genColors []string) ([]string, []string) {
+	refSignatures := graphColorSignatures(reference, refColors)
+	genSignatures := graphColorSignatures(generated, genColors)
+
+	return compactColorIDs(refSignatures, genSignatures)
+}
+
+func graphColorSignatures(graph *ValidationGraph, colors []string) []string {
+	signatures := make([]string, len(graph.Nodes))
 
 	for i, node := range graph.Nodes {
 		depColors := make([]string, 0, len(node.Deps))
@@ -554,15 +563,42 @@ func refineColors(graph *ValidationGraph, colors []string) []string {
 			if depIndex, ok := graph.Index[dep]; ok {
 				depColors = append(depColors, colors[depIndex])
 			} else {
-				depColors = append(depColors, "<missing:"+dep+">")
+				depColors = append(depColors, "<missing>")
 			}
 		}
 
 		sort.Strings(depColors)
-		next[i] = canonicalJSON(map[string]any{"identity": node.identityKey, "deps": depColors})
+		signatures[i] = node.identityKey + "\x00" + strings.Join(depColors, "\x00")
 	}
 
-	return next
+	return signatures
+}
+
+func compactColorIDs(refSignatures, genSignatures []string) ([]string, []string) {
+	keys := make([]string, 0, len(refSignatures)+len(genSignatures))
+	keys = append(keys, refSignatures...)
+	keys = append(keys, genSignatures...)
+	sort.Strings(keys)
+
+	colorsBySignature := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if _, ok := colorsBySignature[key]; ok {
+			continue
+		}
+
+		colorsBySignature[key] = fmt.Sprintf("C%06d", len(colorsBySignature))
+	}
+
+	refColors := make([]string, len(refSignatures))
+	genColors := make([]string, len(genSignatures))
+	for i, signature := range refSignatures {
+		refColors[i] = colorsBySignature[signature]
+	}
+	for i, signature := range genSignatures {
+		genColors[i] = colorsBySignature[signature]
+	}
+
+	return refColors, genColors
 }
 
 func groupNodeIndexes(colors []string) map[string][]int {
@@ -575,19 +611,30 @@ func groupNodeIndexes(colors []string) map[string][]int {
 	return groups
 }
 
-func sortNodeIndexes(nodes []ValidationNode, indexes []int, colors []string) {
+func sortNodeIndexes(graph *ValidationGraph, indexes []int, colors []string) {
 	sort.Slice(indexes, func(i, j int) bool {
-		left := nodeStableFingerprint(nodes[indexes[i]], colors, indexes[i])
-		right := nodeStableFingerprint(nodes[indexes[j]], colors, indexes[j])
+		left := nodeStableFingerprint(graph, indexes[i], colors)
+		right := nodeStableFingerprint(graph, indexes[j], colors)
 
 		return left < right
 	})
 }
 
-func nodeStableFingerprint(node ValidationNode, colors []string, index int) string {
+func nodeStableFingerprint(graph *ValidationGraph, index int, colors []string) string {
+	node := graph.Nodes[index]
+	depColors := make([]string, 0, len(node.Deps))
+	for _, dep := range node.Deps {
+		if depIndex, ok := graph.Index[dep]; ok {
+			depColors = append(depColors, colors[depIndex])
+		} else {
+			depColors = append(depColors, "<missing>")
+		}
+	}
+	sort.Strings(depColors)
+
 	return canonicalJSON(map[string]any{
 		"identity": node.identityKey,
-		"deps":     sortedStringsCopy(node.Deps),
+		"deps":     depColors,
 		"index":    index,
 	})
 }
