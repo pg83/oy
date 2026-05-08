@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 func main() {
@@ -18,36 +17,7 @@ func main() {
 
 		result := Throw2(ParseFlags(os.Args))
 
-		vars := NewMemoryVariableSet()
-
-		for k, v := range result.PlatformFlag.ToMap() {
-			vars.SetValue(k, v)
-		}
-
-		fullVars := NewBuildContextVariableSet(result.Ctx, vars)
-
-		registry := NewModuleRegistry()
-		ctx := ParseContext{
-			Platform:   "linux",
-			TargetPath: "",
-			Language:   result.Ctx.Language,
-			Musl:       result.Ctx.Musl,
-		}
-		graph := NewGraph(ctx)
-		parser := NewFileParser(registry, graph, result.Ctx, fullVars)
-
-		targetPath := ""
-		for _, arg := range os.Args[1:] {
-			if arg == "lex" || arg == "--musl" || strings.HasPrefix(arg, "--target-platform") ||
-				strings.HasPrefix(arg, "--host-platform-flag") || strings.HasPrefix(arg, "--target-platform-flag") ||
-				strings.HasPrefix(arg, "--language=") {
-				continue
-			}
-			if arg != "" && arg[0] != '-' {
-				targetPath = arg
-				break
-			}
-		}
+		targetPath := findTargetArg(os.Args[1:])
 
 		if targetPath == "" {
 			fmt.Printf("Usage: ymake [flags] <target-path>\n")
@@ -55,17 +25,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		yaMakePath := ""
-		if IsDir(targetPath) {
-			yaMakePath = filepath.Join(targetPath, "ya.make")
-		} else {
-			yaMakePath = targetPath
-		}
+		cwd := Throw2(os.Getwd())
+		resolvedTarget, sourceRoot := resolveCLIBuildTarget(targetPath, cwd)
+		ctx := buildParseContext(result, resolvedTarget)
 
-		fmt.Printf("Parsing %s...\n", yaMakePath)
-		parser.Parse(yaMakePath)
+		fmt.Printf("Building graph for %s from %s...\n", resolvedTarget, sourceRoot)
+		graph := Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
 
-		fmt.Printf("Successfully parsed %d modules and generated %d graph nodes\n", registry.Count(), len(graph.Nodes))
+		fmt.Printf("Successfully generated %d graph nodes\n", len(graph.Nodes))
 
 		if result.OutputJSON {
 			outputPath := "sg.json"
@@ -89,4 +56,118 @@ func main() {
 func IsDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func findTargetArg(args []string) string {
+	for _, arg := range args {
+		if isCLIFlagArg(arg) {
+			continue
+		}
+
+		return arg
+	}
+
+	return ""
+}
+
+func isCLIFlagArg(arg string) bool {
+	if arg == "" {
+		return true
+	}
+
+	switch arg {
+	case "lex", "-G", "--graph", "--musl":
+		return true
+	}
+
+	return arg[0] == '-'
+}
+
+func resolveCLIBuildTarget(targetPath string, cwd string) (string, string) {
+	if !filepath.IsAbs(targetPath) {
+		return normalizeCLITargetPath(targetPath), cwd
+	}
+
+	startDir := cliTargetStartDir(targetPath)
+	sourceRoot := findSourceRoot(startDir)
+	if sourceRoot == "" {
+		return fallbackBuildTarget(targetPath), fallbackSourceRoot(targetPath)
+	}
+
+	relTarget, err := filepath.Rel(sourceRoot, targetPath)
+	if err != nil {
+		return targetPath, sourceRoot
+	}
+
+	return normalizeCLITargetPath(filepath.ToSlash(relTarget)), sourceRoot
+}
+
+func cliTargetStartDir(targetPath string) string {
+	if filepath.Base(targetPath) == "ya.make" {
+		return filepath.Dir(targetPath)
+	}
+
+	if IsDir(targetPath) {
+		return targetPath
+	}
+
+	return filepath.Dir(targetPath)
+}
+
+func findSourceRoot(startDir string) string {
+	dir := filepath.Clean(startDir)
+
+	for {
+		if IsDir(filepath.Join(dir, "build")) && IsDir(filepath.Join(dir, "tools")) {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func fallbackSourceRoot(targetPath string) string {
+	if IsDir(targetPath) && hasYaMakeFile(targetPath) {
+		return targetPath
+	}
+
+	return filepath.Dir(targetPath)
+}
+
+func fallbackBuildTarget(targetPath string) string {
+	if IsDir(targetPath) && hasYaMakeFile(targetPath) {
+		return "ya.make"
+	}
+
+	return targetPath
+}
+
+func hasYaMakeFile(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "ya.make"))
+
+	return err == nil && !info.IsDir()
+}
+
+func normalizeCLITargetPath(targetPath string) string {
+	targetPath = filepath.ToSlash(filepath.Clean(targetPath))
+
+	if filepath.Base(targetPath) == "ya.make" {
+		return filepath.ToSlash(filepath.Dir(targetPath))
+	}
+
+	return targetPath
+}
+
+func buildParseContext(result *ParseFlagsResult, targetPath string) ParseContext {
+	return ParseContext{
+		Platform:   "linux",
+		TargetPath: targetPath,
+		Language:   result.Ctx.Language,
+		Musl:       result.Ctx.Musl,
+		BuildFlags: result.PlatformFlag.ToMap(),
+	}
 }
