@@ -136,8 +136,10 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
 	file := ParseYaMakeFile(moduleYaMakePath)
 
 	moduleDir := filepath.Dir(filepath.ToSlash(moduleYaMakePath))
-	moduleDir = strings.TrimPrefix(moduleDir, be.sourceRoot)
-	moduleDir = strings.TrimPrefix(moduleDir, "/")
+	relModuleDir := strings.TrimPrefix(moduleDir, be.sourceRoot)
+	relModuleDir = strings.TrimPrefix(relModuleDir, "/")
+
+	be.recurser.ProcessFileImports(file, relModuleDir, be.sourceRoot)
 
 	for _, module := range file.Modules {
 		module.SourcePath = strings.TrimPrefix(module.SourcePath, be.sourceRoot)
