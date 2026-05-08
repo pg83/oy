@@ -50,7 +50,7 @@ func TestParseToolsArchiver(t *testing.T) {
 		}
 	}
 
-	value, ok := module.GetProperty("IDE_FOLDER")
+		value, ok := module.GetProperty("IDE_FOLDER")
 	if !ok || value != "_Builders" {
 		t.Errorf("expected IDE_FOLDER='_Builders', got '%s', ok=%v", value, ok)
 	}

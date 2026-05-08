@@ -25,6 +25,22 @@ type Command struct {
 	CmdArgs []string `json:"cmd_args"`
 }
 
+type ReferenceGraph struct {
+	Conf    *GraphConf      `json:"conf"`
+	Nodes   []*GraphNode    `json:"graph"`
+	Inputs  map[string]string `json:"inputs"`
+	Result  []string        `json:"result"`
+}
+
+type GraphConf struct {
+	GraphSize int `json:"graph_size"`
+}
+
+type CommandWithEnv struct {
+	CmdArgs []string          `json:"cmd_args"`
+	Env     map[string]string `json:"env"`
+}
+
 type GraphNode struct {
 	UID              string            `json:"uid"`
 	SelfUID          string            `json:"self_uid"`
