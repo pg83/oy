@@ -7,9 +7,9 @@ import (
 )
 
 type Parser struct {
-	lexer  *Lexer
-	tokens []Token
-	pos    int
+	lexer    *Lexer
+	tokens   []Token
+	pos      int
 	filePath string
 }
 
@@ -202,6 +202,16 @@ func (p *Parser) parseModule(moduleType ModuleType, sourcePath string) *Module {
 
 		if tok.Value == "RECURSE" || tok.Value == "RECURSE_FOR_TESTS" {
 			p.parseRecurse(module)
+			continue
+		}
+
+		if tok.Value == "ENABLE" {
+			p.parseEnable(module)
+			continue
+		}
+
+		if tok.Value == "DISABLE" {
+			p.parseDisable(module)
 			continue
 		}
 
@@ -537,4 +547,38 @@ func ParseYaMakeFile(path string) *File {
 	}
 
 	return file
+}
+
+func (p *Parser) parseEnable(module *Module) {
+	p.expectIdent("ENABLE")
+	p.expect(TokenLParen)
+
+	tok := p.peek()
+	if tok.Type != TokenIdent {
+		ThrowFmt("%s:%d:%d: syntax error: expected identifier for ENABLE flag, got %s", p.filePath, tok.Line, tok.Col, tok.Type)
+	}
+
+	flag := tok.Value
+	p.advance()
+
+	p.expect(TokenRParen)
+
+	module.AddEnabledFlag(flag)
+}
+
+func (p *Parser) parseDisable(module *Module) {
+	p.expectIdent("DISABLE")
+	p.expect(TokenLParen)
+
+	tok := p.peek()
+	if tok.Type != TokenIdent {
+		ThrowFmt("%s:%d:%d: syntax error: expected identifier for DISABLE flag, got %s", p.filePath, tok.Line, tok.Col, tok.Type)
+	}
+
+	flag := tok.Value
+	p.advance()
+
+	p.expect(TokenRParen)
+
+	module.AddDisabledFlag(flag)
 }

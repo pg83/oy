@@ -62,6 +62,8 @@ type Module struct {
 	Conditionals   []*ConditionalBlock
 	Recursions     []*RecurseDirective
 	BuildCondition *BuildCondition
+	EnabledFlags   []string
+	DisabledFlags  []string
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
@@ -190,4 +192,30 @@ func (m *Module) AddConditional(cond *ConditionalBlock) {
 	}
 
 	m.Conditionals = append(m.Conditionals, cond)
+}
+
+// AddEnabledFlag adds an enabled flag to the module.
+func (m *Module) AddEnabledFlag(flag string) {
+	if m == nil {
+		return
+	}
+
+	if m.EnabledFlags == nil {
+		m.EnabledFlags = make([]string, 0, 1)
+	}
+
+	m.EnabledFlags = append(m.EnabledFlags, flag)
+}
+
+// AddDisabledFlag adds a disabled flag to the module.
+func (m *Module) AddDisabledFlag(flag string) {
+	if m == nil {
+		return
+	}
+
+	if m.DisabledFlags == nil {
+		m.DisabledFlags = make([]string, 0, 1)
+	}
+
+	m.DisabledFlags = append(m.DisabledFlags, flag)
 }

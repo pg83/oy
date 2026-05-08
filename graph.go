@@ -49,9 +49,9 @@ type TargetProperties struct {
 }
 
 type Requirements struct {
-	CPU      int    `json:"cpu"`
-	Network  string `json:"network"`
-	RAM      int    `json:"ram"`
+	CPU     int    `json:"cpu"`
+	Network string `json:"network"`
+	RAM     int    `json:"ram"`
 }
 
 type ForeignDeps map[string][]string
