@@ -29,10 +29,10 @@ type Command struct {
 }
 
 type ReferenceGraph struct {
-	Conf    *GraphConf      `json:"conf"`
-	Nodes   []*GraphNode    `json:"graph"`
-	Inputs  map[string]string `json:"inputs"`
-	Result  []string        `json:"result"`
+	Conf   *GraphConf        `json:"conf"`
+	Nodes  []*GraphNode      `json:"graph"`
+	Inputs map[string]string `json:"inputs"`
+	Result []string          `json:"result"`
 }
 
 type GraphConf struct {
@@ -126,26 +126,26 @@ func (g *Graph) ToOutput() *GraphOutput {
 	sessionID := generateSessionID()
 
 	output.Conf = &Conf{
-		Cache: true,
-		Platform: g.Context.Platform,
+		Cache:     true,
+		Platform:  g.Context.Platform,
 		GraphSize: len(g.Nodes),
-		Gsid: fmt.Sprintf("USER:%s YA:%s", username, sessionID),
+		Gsid:      fmt.Sprintf("USER:%s YA:%s", username, sessionID),
 		Description: &Description{
-			Host: hostname,
+			Host:     hostname,
 			Platform: runtime.GOOS + "-" + runtime.GOARCH,
-			User: username,
+			User:     username,
 		},
 		ExecutionCost: &ExecutionCost{
-			CPU: 0,
+			CPU:              0,
 			EvaluationErrors: 0,
 		},
 		DefaultNodeRequirements: map[string]interface{}{
 			"network": "restricted",
 		},
 		ExplicitRemoteStoreUpload: true,
-		Keepon: true,
-		MinReqsErrors: 0,
-		Resources: []Resource{},
+		Keepon:                    true,
+		MinReqsErrors:             0,
+		Resources:                 []Resource{},
 	}
 
 	output.Graph = g.Nodes

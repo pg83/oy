@@ -7,11 +7,11 @@ import (
 )
 
 type BuildEngine struct {
-	registry     *ModuleRegistry
-	recurser     *RecurseProcessor
-	ctx          *ParseContext
-	sourceRoot   string
-	visitedDeps  map[string]bool
+	registry    *ModuleRegistry
+	recurser    *RecurseProcessor
+	ctx         *ParseContext
+	sourceRoot  string
+	visitedDeps map[string]bool
 }
 
 func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {

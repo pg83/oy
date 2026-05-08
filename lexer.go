@@ -267,17 +267,17 @@ func (l *Lexer) NextToken() (Token, error) {
 			continue
 		}
 
-	if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' || ch == '.' || ch == ':' {
-		startLine := l.line
-		startCol := l.col
-		ident := l.readIdent()
-		return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
-	}
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' || ch == '.' || ch == ':' {
+			startLine := l.line
+			startCol := l.col
+			ident := l.readIdent()
+			return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
+		}
 
-	if ch == '=' {
-		l.read()
-		return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: l.col}, nil
-	}
+		if ch == '=' {
+			l.read()
+			return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: l.col}, nil
+		}
 
 		if ch >= '0' && ch <= '9' {
 			startLine := l.line
