@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -37,11 +38,9 @@ func main() {
 
 		targetPath := ""
 		for _, arg := range os.Args[1:] {
-			if arg == "lex" || arg == "--musl" ||
-				arg[:13] == "--target-platform" ||
-				arg[:21] == "--host-platform-flag" ||
-				arg[:23] == "--target-platform-flag" ||
-				arg[:11] == "--language=" {
+			if arg == "lex" || arg == "--musl" || strings.HasPrefix(arg, "--target-platform") ||
+				strings.HasPrefix(arg, "--host-platform-flag") || strings.HasPrefix(arg, "--target-platform-flag") ||
+				strings.HasPrefix(arg, "--language=") {
 				continue
 			}
 			if arg != "" && arg[0] != '-' {
