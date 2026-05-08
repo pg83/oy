@@ -13,6 +13,9 @@ const (
 	TokenLParen
 	TokenRParen
 	TokenString
+	TokenAmpersandAmpersand
+	TokenPipePipe
+	TokenBang
 )
 
 func (t TokenType) String() string {
@@ -27,6 +30,12 @@ func (t TokenType) String() string {
 		return "RPAREN"
 	case TokenString:
 		return "STRING"
+	case TokenAmpersandAmpersand:
+		return "&&"
+	case TokenPipePipe:
+		return "||"
+	case TokenBang:
+		return "!"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}
@@ -97,7 +106,7 @@ func (l *Lexer) readIdent() string {
 
 	for {
 		ch := l.peek()
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' {
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' {
 			buf.WriteRune(ch)
 			l.read()
 		} else {
@@ -195,18 +204,42 @@ func (l *Lexer) NextToken() (Token, error) {
 			return Token{Type: TokenLParen, Value: "(", Line: l.line, Col: startCol}, nil
 		}
 
-		if ch == ')' {
-			startCol := l.col
-			l.read()
-			return Token{Type: TokenRParen, Value: ")", Line: l.line, Col: startCol}, nil
-		}
+	if ch == ')' {
+		startCol := l.col
+		l.read()
+		return Token{Type: TokenRParen, Value: ")", Line: l.line, Col: startCol}, nil
+	}
 
-		if ch == '"' {
-			startLine := l.line
-			startCol := l.col
-			str := l.readString()
-			return Token{Type: TokenString, Value: str, Line: startLine, Col: startCol}, nil
+	if ch == '"' {
+		startLine := l.line
+		startCol := l.col
+		str := l.readString()
+		return Token{Type: TokenString, Value: str, Line: startLine, Col: startCol}, nil
+	}
+
+	if ch == '&' {
+		startCol := l.col
+		l.read()
+		if l.peek() == '&' {
+			l.read()
+			return Token{Type: TokenAmpersandAmpersand, Value: "&&", Line: l.line, Col: startCol}, nil
 		}
+	}
+
+	if ch == '|' {
+		startCol := l.col
+		l.read()
+		if l.peek() == '|' {
+			l.read()
+			return Token{Type: TokenPipePipe, Value: "||", Line: l.line, Col: startCol}, nil
+		}
+	}
+
+	if ch == '!' {
+		startCol := l.col
+		l.read()
+		return Token{Type: TokenBang, Value: "!", Line: l.line, Col: startCol}, nil
+	}
 
 		if ch == '\n' {
 			l.read()
@@ -221,7 +254,17 @@ func (l *Lexer) NextToken() (Token, error) {
 			continue
 		}
 
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') {
+		if ch == '#' {
+			for {
+				consume := l.read()
+				if consume == 0 || consume == '\n' || consume == '\r' {
+					break
+				}
+			}
+			continue
+		}
+
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' {
 			startLine := l.line
 			startCol := l.col
 			ident := l.readIdent()
