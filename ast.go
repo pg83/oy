@@ -11,13 +11,13 @@ type SourceLocation struct {
 type ModuleType int
 
 const (
-	ModuleTypeUnknown   ModuleType = iota
-	ModuleTypeProgram              // PROGRAM() - executable binary
-	ModuleTypeLibrary              // LIBRARY() - static/shared library
-	ModuleTypeGoLibrary            // GO_LIBRARY() - Go library
-	ModuleTypeDLL                  // DLL() - Windows shared library
-	ModuleTypePy23Library          // PY23_LIBRARY() - Python 3.x library
-	ModuleTypePyLibrary            // PY_LIBRARY() - Python library (any version)
+	ModuleTypeUnknown     ModuleType = iota
+	ModuleTypeProgram                // PROGRAM() - executable binary
+	ModuleTypeLibrary                // LIBRARY() - static/shared library
+	ModuleTypeGoLibrary              // GO_LIBRARY() - Go library
+	ModuleTypeDLL                    // DLL() - Windows shared library
+	ModuleTypePy23Library            // PY23_LIBRARY() - Python 3.x library
+	ModuleTypePyLibrary              // PY_LIBRARY() - Python library (any version)
 )
 
 // String returns a human-readable representation of the ModuleType.
@@ -40,6 +40,12 @@ func (mt ModuleType) String() string {
 	}
 }
 
+// ConditionalBranch represents a single condition-branch pair in a conditional block.
+type ConditionalBranch struct {
+	Condition string
+	Module    *Module
+}
+
 // File represents a single ya.make file containing module definitions and recurse directives.
 type File struct {
 	Modules []*Module
@@ -52,23 +58,22 @@ type Module struct {
 	SourcePath   string
 	Dependencies []string
 	Sources      []string
-	Imports      []*RecurseDirective
 	Properties   map[string]string
-	Recursions   []*RecurseDirective
 	Conditionals []*ConditionalBlock
+	Recursions   []*RecurseDirective
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
 type RecurseDirective struct {
-	Paths     []string
-	Location  SourceLocation
+	Paths    []string
+	Location SourceLocation
 }
 
-// ConditionalBlock represents an IF/ELSE/ENDIF conditional block in ya.make.
+// ConditionalBlock represents an IF/ELSEIF/ELSE/ENDIF conditional block in ya.make.
 type ConditionalBlock struct {
-	Condition  string
-	IfBranch   *Module
-	ElseBranch *Module
+	IfBranch   *ConditionalBranch
+	ElseIfs    []*ConditionalBranch
+	ElseBranch *ConditionalBranch
 	Location   SourceLocation
 }
 
@@ -171,19 +176,6 @@ func (m *Module) AddRecurse(dir *RecurseDirective) {
 	}
 
 	m.Recursions = append(m.Recursions, dir)
-}
-
-// AddImport adds an import directive to the module.
-func (m *Module) AddImport(dir *RecurseDirective) {
-	if m == nil {
-		return
-	}
-
-	if m.Imports == nil {
-		m.Imports = make([]*RecurseDirective, 0, 1)
-	}
-
-	m.Imports = append(m.Imports, dir)
 }
 
 // AddConditional adds a conditional block to the module.
