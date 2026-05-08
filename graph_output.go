@@ -8,24 +8,24 @@ import (
 )
 
 type GraphOutput struct {
-	Conf   *Conf     `json:"conf"`
+	Conf   *Conf        `json:"conf"`
 	Graph  []*GraphNode `json:"graph"`
-	Inputs []string  `json:"inputs"`
-	Result []string  `json:"result"`
+	Inputs []string     `json:"inputs"`
+	Result []string     `json:"result"`
 }
 
 type Conf struct {
-	Cache                      bool                      `json:"cache"`
-	DefaultNodeRequirements    map[string]interface{}    `json:"default_node_requirements"`
-	Description                *Description              `json:"description"`
-	ExecutionCost              *ExecutionCost            `json:"execution_cost"`
-	ExplicitRemoteStoreUpload  bool                      `json:"explicit_remote_store_upload"`
-	GraphSize                  int                       `json:"graph_size"`
-	Gsid                       string                    `json:"gsid"`
-	Keepon                     bool                      `json:"keepon"`
-	MinReqsErrors              int                       `json:"min_reqs_errors"`
-	Platform                   string                    `json:"platform"`
-	Resources                  []Resource                `json:"resources"`
+	Cache                     bool                   `json:"cache"`
+	DefaultNodeRequirements   map[string]interface{} `json:"default_node_requirements"`
+	Description               *Description           `json:"description"`
+	ExecutionCost             *ExecutionCost         `json:"execution_cost"`
+	ExplicitRemoteStoreUpload bool                   `json:"explicit_remote_store_upload"`
+	GraphSize                 int                    `json:"graph_size"`
+	Gsid                      string                 `json:"gsid"`
+	Keepon                    bool                   `json:"keepon"`
+	MinReqsErrors             int                    `json:"min_reqs_errors"`
+	Platform                  string                 `json:"platform"`
+	Resources                 []Resource             `json:"resources"`
 }
 
 type Description struct {

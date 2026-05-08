@@ -10,12 +10,12 @@ import (
 )
 
 type FileParser struct {
-	registry      *ModuleRegistry
-	graph         *Graph
-	buildCtx      *BuildContext
-	vars          VariableSet
-	visited       map[string]bool
-	visitedMutex  sync.Mutex
+	registry     *ModuleRegistry
+	graph        *Graph
+	buildCtx     *BuildContext
+	vars         VariableSet
+	visited      map[string]bool
+	visitedMutex sync.Mutex
 }
 
 func NewFileParser(registry *ModuleRegistry, graph *Graph, buildCtx *BuildContext, vars VariableSet) *FileParser {

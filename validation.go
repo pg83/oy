@@ -23,22 +23,22 @@ type GraphValidator struct {
 }
 
 type NormalizedNode struct {
-	ModuleDir       string
-	ModuleLang      string
-	ModuleType      string
-	Platform        string
-	UID             string
-	DepCount        int
-	OutputPaths     []string
-	InputPaths      []string
-	Cmds            []CommandWithEnv
-	Env             map[string]string
-	KV              map[string]string
-	Requirements    Requirements
-	Sandboxing      bool
-	Tags            []string
-	ForeignDeps     ForeignDeps
-	HostPlatform    bool
+	ModuleDir    string
+	ModuleLang   string
+	ModuleType   string
+	Platform     string
+	UID          string
+	DepCount     int
+	OutputPaths  []string
+	InputPaths   []string
+	Cmds         []CommandWithEnv
+	Env          map[string]string
+	KV           map[string]string
+	Requirements Requirements
+	Sandboxing   bool
+	Tags         []string
+	ForeignDeps  ForeignDeps
+	HostPlatform bool
 }
 
 func NewGraphValidator(referencePath string, generated *Graph) *GraphValidator {

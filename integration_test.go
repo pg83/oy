@@ -94,7 +94,7 @@ func TestGenerateAndValidateGraphInOneStep(t *testing.T) {
 		t.Fatalf("BuildDependencyGraph failed: %v", err)
 	}
 
-	validator := NewGraphValidator(ReferenceGraphPath, graph);
+	validator := NewGraphValidator(ReferenceGraphPath, graph)
 
 	nodeCountDiff := len(validator.reference.Nodes) - len(graph.Nodes)
 	t.Logf("Node count: reference=%d, generated=%d (diff: %d)",
