@@ -82,6 +82,23 @@ func TestCompareGraphFilesMapsDuplicateLeavesByConsumers(t *testing.T) {
 	assertGraphsMatch(t, ref, gen)
 }
 
+func TestCompareGraphFilesMapsSymmetricDuplicateSubgraphs(t *testing.T) {
+	refLeafA := syntheticNode("ref-leaf-a", "same/leaf", nil, []string{"leaf.out"})
+	refLeafB := syntheticNode("ref-leaf-b", "same/leaf", nil, []string{"leaf.out"})
+	refParentA := syntheticNode("ref-parent-a", "same/parent", []string{"ref-leaf-a"}, []string{"parent.out"})
+	refParentB := syntheticNode("ref-parent-b", "same/parent", []string{"ref-leaf-b"}, []string{"parent.out"})
+
+	genLeafA := syntheticNode("gen-leaf-a", "same/leaf", nil, []string{"leaf.out"})
+	genLeafB := syntheticNode("gen-leaf-b", "same/leaf", nil, []string{"leaf.out"})
+	genParentA := syntheticNode("gen-parent-a", "same/parent", []string{"gen-leaf-b"}, []string{"parent.out"})
+	genParentB := syntheticNode("gen-parent-b", "same/parent", []string{"gen-leaf-a"}, []string{"parent.out"})
+
+	ref := syntheticGraph([]ValidationNode{refLeafA, refLeafB, refParentA, refParentB}, []string{"ref-parent-a"})
+	gen := syntheticGraph([]ValidationNode{genLeafA, genLeafB, genParentA, genParentB}, []string{"gen-parent-b"})
+
+	assertGraphsMatch(t, ref, gen)
+}
+
 func TestCompareGraphFilesReportsFirstNMismatches(t *testing.T) {
 	ref := syntheticGraph([]ValidationNode{syntheticNode("ref", "m", nil, []string{"out"})}, []string{"ref"})
 	gen := syntheticGraph([]ValidationNode{syntheticNode("gen", "m", nil, []string{"out"})}, []string{"gen"})

@@ -466,6 +466,7 @@ func (c *graphComparison) buildUIDMapping() {
 
 	refGroups := groupNodeIndexes(refColors)
 	genGroups := groupNodeIndexes(genColors)
+	ambiguousGroups := make([]nodeColorGroup, 0)
 
 	for color, refIndexes := range refGroups {
 		genIndexes := genGroups[color]
@@ -477,35 +478,215 @@ func (c *graphComparison) buildUIDMapping() {
 			continue
 		}
 
-		sortNodeIndexes(c.reference, refIndexes, refColors)
-		sortNodeIndexes(c.generated, genIndexes, genColors)
+		if len(refIndexes) == 1 {
+			c.mapNodePair(refIndexes[0], genIndexes[0])
+			continue
+		}
 
+		ambiguousGroups = append(ambiguousGroups, nodeColorGroup{color: color, refIndexes: refIndexes, genIndexes: genIndexes})
+	}
+
+	c.mapAmbiguousColorGroups(ambiguousGroups)
+	c.mapUniqueLooseKeys()
+}
+
+type nodeColorGroup struct {
+	color      string
+	refIndexes []int
+	genIndexes []int
+}
+
+func (c *graphComparison) mapAmbiguousColorGroups(groups []nodeColorGroup) {
+	if len(groups) == 0 {
+		return
+	}
+
+	sort.Slice(groups, func(i, j int) bool { return groups[i].color < groups[j].color })
+	pending := make(map[string]nodeColorGroup, len(groups))
+	for _, group := range groups {
+		pending[group.color] = group
+	}
+
+	for len(pending) > 0 {
+		progress := false
+		colors := make([]string, 0, len(pending))
+		for color := range pending {
+			colors = append(colors, color)
+		}
+		sort.Strings(colors)
+
+		for _, color := range colors {
+			group := pending[color]
+			pairs, ok := c.constrainedNodePairs(group)
+			if !ok {
+				continue
+			}
+
+			for _, pair := range pairs {
+				c.mapNodePair(pair.refIndex, pair.genIndex)
+			}
+			delete(pending, color)
+			progress = true
+		}
+
+		if progress {
+			continue
+		}
+
+		group := pending[colors[0]]
+		c.mapArbitraryNodeGroup(group)
+		delete(pending, group.color)
+	}
+}
+
+type nodeIndexPair struct {
+	refIndex int
+	genIndex int
+}
+
+func (c *graphComparison) constrainedNodePairs(group nodeColorGroup) ([]nodeIndexPair, bool) {
+	refGroups := make(map[string][]int)
+	genGroups := make(map[string][]int)
+	hasConstraint := false
+
+	for _, refIndex := range group.refIndexes {
+		signature := c.refMappedNeighborSignature(refIndex)
+		if signature != "[]" {
+			hasConstraint = true
+		}
+		refGroups[signature] = append(refGroups[signature], refIndex)
+	}
+	for _, genIndex := range group.genIndexes {
+		signature := c.genMappedNeighborSignature(genIndex)
+		if signature != "[]" {
+			hasConstraint = true
+		}
+		genGroups[signature] = append(genGroups[signature], genIndex)
+	}
+	if !hasConstraint {
+		return nil, false
+	}
+
+	pairs := make([]nodeIndexPair, 0, len(group.refIndexes))
+	keys := make([]string, 0, len(refGroups))
+	for key := range refGroups {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		refIndexes := refGroups[key]
+		genIndexes := genGroups[key]
+		if len(refIndexes) != len(genIndexes) {
+			return nil, false
+		}
+
+		sortNodeIndexes(c.reference, refIndexes, c.refNodeColors)
+		sortNodeIndexes(c.generated, genIndexes, c.genNodeColors)
 		for i, refIndex := range refIndexes {
-			genIndex := genIndexes[i]
-			refUID := c.reference.Nodes[refIndex].UID
-			genUID := c.generated.Nodes[genIndex].UID
-			c.refToGenUID[refUID] = genUID
-			c.genToRefUID[genUID] = refUID
-			canonical := fmt.Sprintf("N%06d", len(c.refCanonical))
-			c.refCanonical[refUID] = canonical
-			c.genCanonical[genUID] = canonical
+			pairs = append(pairs, nodeIndexPair{refIndex: refIndex, genIndex: genIndexes[i]})
+		}
+	}
 
-			if c.reference.Nodes[refIndex].SelfUID != "" {
-				c.refCanonical[c.reference.Nodes[refIndex].SelfUID] = canonical
+	if len(genGroups) != len(refGroups) {
+		return nil, false
+	}
+
+	return pairs, true
+}
+
+func (c *graphComparison) refMappedNeighborSignature(index int) string {
+	node := c.reference.Nodes[index]
+	parts := make([]string, 0)
+
+	for _, uid := range c.reference.Result {
+		if uid == node.UID {
+			parts = append(parts, "result")
+		}
+	}
+	for _, dep := range node.Deps {
+		if mapped, ok := c.refToGenUID[dep]; ok {
+			parts = append(parts, "dep:"+mapped)
+		}
+	}
+	for _, candidate := range c.reference.Nodes {
+		for _, dep := range candidate.Deps {
+			if dep != node.UID {
+				continue
 			}
-			if c.reference.Nodes[refIndex].StatsUID != "" {
-				c.refCanonical[c.reference.Nodes[refIndex].StatsUID] = canonical
-			}
-			if c.generated.Nodes[genIndex].SelfUID != "" {
-				c.genCanonical[c.generated.Nodes[genIndex].SelfUID] = canonical
-			}
-			if c.generated.Nodes[genIndex].StatsUID != "" {
-				c.genCanonical[c.generated.Nodes[genIndex].StatsUID] = canonical
+			if mapped, ok := c.refToGenUID[candidate.UID]; ok {
+				parts = append(parts, "dependent:"+mapped)
 			}
 		}
 	}
 
-	c.mapUniqueLooseKeys()
+	sort.Strings(parts)
+	return canonicalJSON(parts)
+}
+
+func (c *graphComparison) genMappedNeighborSignature(index int) string {
+	node := c.generated.Nodes[index]
+	parts := make([]string, 0)
+
+	for _, uid := range c.generated.Result {
+		if uid == node.UID {
+			parts = append(parts, "result")
+		}
+	}
+	for _, dep := range node.Deps {
+		if _, ok := c.genToRefUID[dep]; ok {
+			parts = append(parts, "dep:"+dep)
+		}
+	}
+	for _, candidate := range c.generated.Nodes {
+		for _, dep := range candidate.Deps {
+			if dep != node.UID {
+				continue
+			}
+			if _, ok := c.genToRefUID[candidate.UID]; ok {
+				parts = append(parts, "dependent:"+candidate.UID)
+			}
+		}
+	}
+
+	sort.Strings(parts)
+	return canonicalJSON(parts)
+}
+
+func (c *graphComparison) mapArbitraryNodeGroup(group nodeColorGroup) {
+	refIndexes := append([]int(nil), group.refIndexes...)
+	genIndexes := append([]int(nil), group.genIndexes...)
+	sortNodeIndexes(c.reference, refIndexes, c.refNodeColors)
+	sortNodeIndexes(c.generated, genIndexes, c.genNodeColors)
+
+	for i, refIndex := range refIndexes {
+		c.mapNodePair(refIndex, genIndexes[i])
+	}
+}
+
+func (c *graphComparison) mapNodePair(refIndex, genIndex int) {
+	refNode := c.reference.Nodes[refIndex]
+	genNode := c.generated.Nodes[genIndex]
+	refUID := refNode.UID
+	genUID := genNode.UID
+	c.refToGenUID[refUID] = genUID
+	c.genToRefUID[genUID] = refUID
+	canonical := fmt.Sprintf("N%06d", len(c.refToGenUID)-1)
+	c.refCanonical[refUID] = canonical
+	c.genCanonical[genUID] = canonical
+
+	if refNode.SelfUID != "" {
+		c.refCanonical[refNode.SelfUID] = canonical
+	}
+	if refNode.StatsUID != "" {
+		c.refCanonical[refNode.StatsUID] = canonical
+	}
+	if genNode.SelfUID != "" {
+		c.genCanonical[genNode.SelfUID] = canonical
+	}
+	if genNode.StatsUID != "" {
+		c.genCanonical[genNode.StatsUID] = canonical
+	}
 }
 
 func (c *graphComparison) mapUniqueLooseKeys() {
