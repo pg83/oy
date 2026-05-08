@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -24,24 +25,38 @@ func main() {
 
 		fullVars := NewBuildContextVariableSet(result.Ctx, vars)
 
-		fmt.Printf("ymake - Ya Make build system reimplementation\n")
-		fmt.Printf("Build context: Musl=%v, TargetPlatform=%s, Language=%s\n", result.Ctx.Musl, result.Ctx.TargetPlatform, result.Ctx.Language)
-		fmt.Printf("Platform flags: %s\n", result.PlatformFlag.String())
-
-		if len(os.Args) > 1 {
-			fmt.Printf("Args: %v\n", os.Args)
-			if fullVars.IsTrue("MUSL") {
-				fmt.Printf("MUSL flag is enabled\n")
-			}
-			if result.Ctx.TargetPlatform != "" {
-				targetPlatformKey := "TARGET_PLATFORM_DEFAULT_LINUX_AARCH64"
-				fmt.Printf("Checking %s: %v\n", targetPlatformKey, fullVars.IsTrue(targetPlatformKey))
-			}
+		if len(result.Args) == 0 {
+			fmt.Printf("Usage: ymake [flags] <target-path>\n")
+			fmt.Printf("Example: ymake --musl tools/archiver\n")
+			os.Exit(1)
 		}
+
+		targetPath := result.Args[0]
+
+		registry := NewModuleRegistry()
+		graph := NewGraph(result.Ctx)
+		parser := NewFileParser(registry, graph, result.Ctx, fullVars)
+
+		yaMakePath := ""
+		if IsDir(targetPath) {
+			yaMakePath = filepath.Join(targetPath, "ya.make")
+		} else {
+			yaMakePath = targetPath
+		}
+
+		fmt.Printf("Parsing %s...\n", yaMakePath)
+		parser.Parse(yaMakePath)
+
+		fmt.Printf("Successfully parsed %d modules and generated %d graph nodes\n", registry.Count(), len(graph.Nodes))
 
 	}); exc != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", exc.AsError())
 		os.Exit(1)
 	}
 
+}
+
+func IsDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
