@@ -104,6 +104,7 @@ func (b *BuildContextVariableSet) GetValue(key string) (string, bool) {
 // IsTrue resolves built-in constants from BuildContext and delegates unknown keys
 // to the inner set. OS constants: OS_LINUX, OS_WINDOWS, OS_DARWIN, OS_MAC (legacy).
 // Architecture: ARCH_TYPE_64, ARCH_TYPE_32. Compiler: MSVC, CLANG, GCC.
+// Platform flags: MUSL, TARGET_PLATFORM_*, language flags: PROTO, GO, PYTHON3, etc.
 func (b *BuildContextVariableSet) IsTrue(key string) bool {
 	switch key {
 	case "OS_LINUX":
@@ -122,7 +123,15 @@ func (b *BuildContextVariableSet) IsTrue(key string) bool {
 		return b.ctx.Compiler == CompilerClang
 	case "GCC":
 		return b.ctx.Compiler == CompilerGCC
+	case "MUSL":
+		return b.ctx.Musl
 	default:
+		if b.isTargetPlatformKey(key) {
+			return b.resolveTargetPlatform(key)
+		}
+		if b.isLanguageKey(key) {
+			return b.resolveLanguage(key)
+		}
 		return b.inner.IsTrue(key)
 	}
 }
@@ -136,7 +145,46 @@ func (b *BuildContextVariableSet) HasKey(key string) bool {
 		return true
 	case "MSVC", "CLANG", "GCC":
 		return true
+	case "MUSL":
+		return true
 	default:
+		if b.isTargetPlatformKey(key) || b.isLanguageKey(key) {
+			return true
+		}
 		return b.inner.HasKey(key)
 	}
+}
+
+func (b *BuildContextVariableSet) isTargetPlatformKey(key string) bool {
+	if len(key) <= 16 {
+		return false
+	}
+	return key[:16] == "TARGET_PLATFORM_"
+}
+
+func (b *BuildContextVariableSet) resolveTargetPlatform(key string) bool {
+	if b.ctx.TargetPlatform == "" {
+		return false
+	}
+
+	normalizedTarget := strings.ToUpper(strings.ReplaceAll(b.ctx.TargetPlatform, "-", "_"))
+	expected := "TARGET_PLATFORM_" + normalizedTarget
+	return key == expected
+}
+
+func (b *BuildContextVariableSet) isLanguageKey(key string) bool {
+	languageKeys := []string{"PROTO", "GO", "PYTHON3", "PYTHON", "JAVA", "CSHARP", "CPP"}
+	for _, lang := range languageKeys {
+		if key == lang {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *BuildContextVariableSet) resolveLanguage(key string) bool {
+	if b.ctx.Language == "" {
+		return false
+	}
+	return strings.ToUpper(b.ctx.Language) == key
 }

@@ -1,5 +1,21 @@
 package main
 
+// ApplyModuleFlags applies ENABLE and DISABLE directives from a module to the VariableSet.
+// ENABLE(flags) sets the flag to "yes", DISABLE(flags) sets the flag to "no".
+func ApplyModuleFlags(module *Module, vars VariableSet) {
+	if module == nil {
+		return
+	}
+
+	for _, flag := range module.EnabledFlags {
+		vars.SetValue(flag, "yes")
+	}
+
+	for _, flag := range module.DisabledFlags {
+		vars.SetValue(flag, "no")
+	}
+}
+
 // ResolveConditionals evaluates all conditional blocks in a module, merging
 // the appropriate branch (IF, ELSEIF, or ELSE) into the result module based on
 // the provided build context and variable set. Each conditional block is
@@ -14,6 +30,8 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 	if len(module.Conditionals) == 0 {
 		return module
 	}
+
+	ApplyModuleFlags(module, vars)
 
 	resultModule := &Module{
 		Type:         module.Type,

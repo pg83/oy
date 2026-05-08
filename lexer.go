@@ -204,42 +204,42 @@ func (l *Lexer) NextToken() (Token, error) {
 			return Token{Type: TokenLParen, Value: "(", Line: l.line, Col: startCol}, nil
 		}
 
-	if ch == ')' {
-		startCol := l.col
-		l.read()
-		return Token{Type: TokenRParen, Value: ")", Line: l.line, Col: startCol}, nil
-	}
-
-	if ch == '"' {
-		startLine := l.line
-		startCol := l.col
-		str := l.readString()
-		return Token{Type: TokenString, Value: str, Line: startLine, Col: startCol}, nil
-	}
-
-	if ch == '&' {
-		startCol := l.col
-		l.read()
-		if l.peek() == '&' {
+		if ch == ')' {
+			startCol := l.col
 			l.read()
-			return Token{Type: TokenAmpersandAmpersand, Value: "&&", Line: l.line, Col: startCol}, nil
+			return Token{Type: TokenRParen, Value: ")", Line: l.line, Col: startCol}, nil
 		}
-	}
 
-	if ch == '|' {
-		startCol := l.col
-		l.read()
-		if l.peek() == '|' {
+		if ch == '"' {
+			startLine := l.line
+			startCol := l.col
+			str := l.readString()
+			return Token{Type: TokenString, Value: str, Line: startLine, Col: startCol}, nil
+		}
+
+		if ch == '&' {
+			startCol := l.col
 			l.read()
-			return Token{Type: TokenPipePipe, Value: "||", Line: l.line, Col: startCol}, nil
+			if l.peek() == '&' {
+				l.read()
+				return Token{Type: TokenAmpersandAmpersand, Value: "&&", Line: l.line, Col: startCol}, nil
+			}
 		}
-	}
 
-	if ch == '!' {
-		startCol := l.col
-		l.read()
-		return Token{Type: TokenBang, Value: "!", Line: l.line, Col: startCol}, nil
-	}
+		if ch == '|' {
+			startCol := l.col
+			l.read()
+			if l.peek() == '|' {
+				l.read()
+				return Token{Type: TokenPipePipe, Value: "||", Line: l.line, Col: startCol}, nil
+			}
+		}
+
+		if ch == '!' {
+			startCol := l.col
+			l.read()
+			return Token{Type: TokenBang, Value: "!", Line: l.line, Col: startCol}, nil
+		}
 
 		if ch == '\n' {
 			l.read()

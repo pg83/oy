@@ -241,7 +241,7 @@ END()
 	}
 
 	cond := file.Conditionals[0]
-	
+
 	expectedCondition := "OS_WINDOWS AND ARCH_X86_64"
 	if cond.IfBranch.Condition != expectedCondition {
 		t.Errorf("expected condition '%s', got '%s'", expectedCondition, cond.IfBranch.Condition)

@@ -7,11 +7,15 @@ import (
 // BuildContext represents build configuration including platform, architecture,
 // compiler, and language-specific flags that affect conditional evaluation.
 type BuildContext struct {
-	Platform  Platform
-	Arch      Arch
-	Compiler  Compiler
-	Flags     map[string]bool
-	Languages map[string]bool
+	Platform       Platform
+	Arch           Arch
+	Compiler       Compiler
+	Flags          map[string]bool
+	Languages      map[string]bool
+	TargetPlatform string
+	Musl           bool
+	PlatformFlags  map[string]string
+	Language       string
 }
 
 // Platform represents the target operating system for conditional evaluation.
@@ -46,8 +50,9 @@ const (
 // and MSVC on Windows.
 func NewBuildContext() *BuildContext {
 	ctx := &BuildContext{
-		Flags:     make(map[string]bool),
-		Languages: make(map[string]bool),
+		Flags:         make(map[string]bool),
+		Languages:     make(map[string]bool),
+		PlatformFlags: make(map[string]string),
 	}
 
 	switch runtime.GOOS {
