@@ -16,6 +16,7 @@ const (
 	TokenAmpersandAmpersand
 	TokenPipePipe
 	TokenBang
+	TokenEquals
 )
 
 func (t TokenType) String() string {
@@ -36,6 +37,8 @@ func (t TokenType) String() string {
 		return "||"
 	case TokenBang:
 		return "!"
+	case TokenEquals:
+		return "="
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}
@@ -106,7 +109,7 @@ func (l *Lexer) readIdent() string {
 
 	for {
 		ch := l.peek()
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' {
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' || ch == ':' {
 			buf.WriteRune(ch)
 			l.read()
 		} else {
@@ -264,12 +267,17 @@ func (l *Lexer) NextToken() (Token, error) {
 			continue
 		}
 
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' {
-			startLine := l.line
-			startCol := l.col
-			ident := l.readIdent()
-			return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
-		}
+	if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' || ch == '.' || ch == ':' {
+		startLine := l.line
+		startCol := l.col
+		ident := l.readIdent()
+		return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
+	}
+
+	if ch == '=' {
+		l.read()
+		return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: l.col}, nil
+	}
 
 		if ch >= '0' && ch <= '9' {
 			startLine := l.line

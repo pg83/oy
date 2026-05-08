@@ -7,10 +7,11 @@ import (
 )
 
 type BuildEngine struct {
-	registry   *ModuleRegistry
-	recurser   *RecurseProcessor
-	ctx        *ParseContext
-	sourceRoot string
+	registry     *ModuleRegistry
+	recurser     *RecurseProcessor
+	ctx          *ParseContext
+	sourceRoot   string
+	visitedDeps  map[string]bool
 }
 
 func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
@@ -18,10 +19,11 @@ func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
 	recurser := NewRecurseProcessor(registry, ctx)
 
 	return &BuildEngine{
-		registry:   registry,
-		recurser:   recurser,
-		ctx:        ctx,
-		sourceRoot: sourceRoot,
+		registry:    registry,
+		recurser:    recurser,
+		ctx:         ctx,
+		sourceRoot:  sourceRoot,
+		visitedDeps: make(map[string]bool),
 	}
 }
 
@@ -38,9 +40,7 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 	}
 
 	mainModule := file.Modules[0]
-	mainModule.SourcePath = filepath.Join(filepath.Dir(absTargetPath), mainModule.SourcePath)
-
-	mainModule.SourcePath = filepath.Clean(mainModule.SourcePath)
+	mainModule.SourcePath = filepath.Dir(filepath.ToSlash(absTargetPath))
 	mainModule.SourcePath = strings.TrimPrefix(mainModule.SourcePath, be.sourceRoot)
 	mainModule.SourcePath = strings.TrimPrefix(mainModule.SourcePath, "/")
 
@@ -55,6 +55,8 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 	}
 
 	be.registry.Register(mainModule.SourcePath, resolvedModule)
+
+	be.processPeerDependencies(resolvedModule)
 
 	graphBuilder := NewGraphBuilder(be.registry, be.ctx)
 	graph := graphBuilder.BuildGraphFromModules(resolvedModule)
@@ -103,6 +105,64 @@ func (be *BuildEngine) createBuildContext() *BuildContext {
 	}
 
 	return ctx
+}
+
+func (be *BuildEngine) processPeerDependencies(module *Module) {
+	if module == nil {
+		return
+	}
+
+	moduleKey := NormalizedPath(module.SourcePath)
+	if be.visitedDeps[moduleKey] {
+		return
+	}
+	be.visitedDeps[moduleKey] = true
+
+	for _, depPath := range module.Dependencies {
+		be.loadModuleAndDependencies(depPath)
+	}
+}
+
+func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
+	if be.registry.Has(depPath) {
+		return
+	}
+
+	moduleYaMakePath := be.findModuleYaMakeFile(depPath)
+	if moduleYaMakePath == "" {
+		return
+	}
+
+	file := ParseYaMakeFile(moduleYaMakePath)
+
+	moduleDir := filepath.Dir(filepath.ToSlash(moduleYaMakePath))
+	relModuleDir := strings.TrimPrefix(moduleDir, be.sourceRoot)
+	relModuleDir = strings.TrimPrefix(relModuleDir, "/")
+
+	be.recurser.ProcessFileImports(file, relModuleDir, be.sourceRoot)
+
+	for _, module := range file.Modules {
+		module.SourcePath = strings.TrimPrefix(module.SourcePath, be.sourceRoot)
+		module.SourcePath = strings.TrimPrefix(module.SourcePath, "/")
+
+		buildContext := be.createBuildContext()
+		resolvedModule := ResolveConditionals(module, buildContext, NewMemoryVariableSet())
+
+		if EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
+			be.registry.Register(module.SourcePath, resolvedModule)
+			be.processPeerDependencies(resolvedModule)
+		}
+	}
+}
+
+func (be *BuildEngine) findModuleYaMakeFile(modulePath string) string {
+	fullPath := filepath.Join(be.sourceRoot, modulePath, "ya.make")
+
+	if _, err := os.Stat(fullPath); err == nil {
+		return fullPath
+	}
+
+	return ""
 }
 
 func BuildDependencyGraph(targetPath string, ctx ParseContext, sourceRoot string) (*Graph, error) {

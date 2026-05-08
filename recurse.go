@@ -64,7 +64,10 @@ func (rp *RecurseProcessor) processDirectoryRecursive(dirPath string, sourceRoot
 
 	rp.visited[normalizedPath] = true
 
-	fileInfo := Throw2(os.Stat(dirPath))
+	fileInfo, err := os.Stat(dirPath)
+	if err != nil {
+		return
+	}
 	if !fileInfo.IsDir() {
 		return
 	}
