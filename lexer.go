@@ -168,6 +168,8 @@ func (l *Lexer) isKeyword(ident string) (TokenType, bool) {
 		"RECURSE_FOR_TESTS": TokenIdent,
 		"IF":                TokenIdent,
 		"ELSE":              TokenIdent,
+		"ELSEIF":            TokenIdent,
+		"NOT":               TokenIdent,
 		"ENDIF":             TokenIdent,
 		"LICENSE":           TokenIdent,
 		"VERSION":           TokenIdent,
