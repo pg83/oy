@@ -8,11 +8,14 @@ import (
 type ParseFlagsResult struct {
 	Ctx          *BuildContext
 	PlatformFlag *PlatformFlags
+	OutputJSON   bool
+	JSONPath     string
 }
 
 func ParseFlags(args []string) (*ParseFlagsResult, error) {
 	ctx := NewBuildContext()
 	platformFlags := NewPlatformFlags()
+	result := &ParseFlagsResult{}
 
 	skipNext := false
 	for i := 0; i < len(args); i++ {
@@ -65,11 +68,27 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 			}
 			continue
 		}
+
+		if arg == "-G" || arg == "--graph" {
+			result.OutputJSON = true
+			continue
+		}
+
+		if strings.HasPrefix(arg, "--graph-file=") {
+			parts := strings.SplitN(arg, "=", 2)
+			if len(parts) == 2 {
+				result.OutputJSON = true
+				result.JSONPath = parts[1]
+			}
+			continue
+		}
 	}
 
 	return &ParseFlagsResult{
 		Ctx:          ctx,
 		PlatformFlag: platformFlags,
+		OutputJSON:   result.OutputJSON,
+		JSONPath:     result.JSONPath,
 	}, nil
 }
 
