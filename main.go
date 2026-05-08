@@ -2,22 +2,18 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/pg83/oy"
+	"os"
 )
 
 func main() {
 
-	Try(func() {
+	if exc := Try(func() {
 
 		fmt.Println("ymake - Ya Make build system reimplementation")
-	})
 
-	if err := recover(); err != nil {
-		if exc, ok := err.(*Exception); ok {
-			fmt.Fprintf(stderr, "Error: %v\n", exc.AsError())
-		} else {
-			panic(err)
-		}
+	}); exc != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", exc.AsError())
+		os.Exit(1)
 	}
+
 }
