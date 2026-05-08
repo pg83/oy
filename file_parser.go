@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -138,6 +139,10 @@ func (fp *FileParser) handleRecurse(dir *RecurseDirective, basePath string, g *e
 	for _, relPath := range dir.Paths {
 		subdirPath := filepath.Join(basePath, relPath)
 		yaMakePath := filepath.Join(subdirPath, "ya.make")
+
+		if _, err := os.Stat(yaMakePath); os.IsNotExist(err) {
+			continue
+		}
 
 		g.Go(func() error {
 			if ctx.Err() != nil {
