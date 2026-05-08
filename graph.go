@@ -13,14 +13,21 @@ type ParseContext struct {
 	BuildFlags map[string]string
 }
 
+type GraphConf struct {
+	GraphSize int `json:"graph_size"`
+}
+
 type Graph struct {
-	Nodes   []*GraphNode
-	Inputs  []string
+	Conf    *GraphConf   `json:"conf"`
+	Nodes   []*GraphNode `json:"graph"`
+	Inputs  map[string]string `json:"inputs"`
+	Result  []string `json:"result"`
 	Context ParseContext
 }
 
 type Command struct {
-	CmdArgs []string `json:"cmd_args"`
+	CmdArgs []string          `json:"cmd_args"`
+	Env     map[string]string `json:"env"`
 }
 
 type GraphNode struct {
@@ -60,7 +67,8 @@ func NewGraph(ctx ParseContext) *Graph {
 	return &Graph{
 		Context: ctx,
 		Nodes:   make([]*GraphNode, 0),
-		Inputs:  make([]string, 0),
+		Inputs:  make(map[string]string),
+		Result:  make([]string, 0),
 	}
 }
 
@@ -86,6 +94,6 @@ func (g *Graph) AddNode(node *GraphNode) {
 	g.Nodes = append(g.Nodes, node)
 }
 
-func (g *Graph) AddInput(path string) {
-	g.Inputs = append(g.Inputs, path)
+func (g *Graph) AddInput(key, value string) {
+	g.Inputs[key] = value
 }

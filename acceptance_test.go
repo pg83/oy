@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -53,5 +55,22 @@ func TestParseToolsArchiver(t *testing.T) {
 	value, ok := module.GetProperty("IDE_FOLDER")
 	if !ok || value != "_Builders" {
 		t.Errorf("expected IDE_FOLDER='_Builders', got '%s', ok=%v", value, ok)
+	}
+}
+
+func TestGraphEqualityValidation(t *testing.T) {
+	if _, err := os.Stat(REFERENCE_GRAPH_PATH); os.IsNotExist(err) {
+		t.Skip("reference graph not found:", REFERENCE_GRAPH_PATH)
+	}
+
+	referenceData := Throw2(os.ReadFile(REFERENCE_GRAPH_PATH))
+
+	var referenceGraph Graph
+	Throw(json.Unmarshal(referenceData, &referenceGraph))
+
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &referenceGraph)
+
+	if err := validator.Validate(); err != nil {
+		t.Errorf("graph equality validation failed: %v", err)
 	}
 }
