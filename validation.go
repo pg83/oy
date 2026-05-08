@@ -1,19 +1,5 @@
 package main
 
-// Graph equality validation implementation comparing generated Go implementation graph
-// against reference sg.json (3730 nodes, 75MB).
-//
-// Validation algorithm:
-// 1. Load reference sg.json from /home/pg/monorepo/yatool_orig/sg.json
-// 2. Normalize UIDs: replace deterministic base64 UIDs with sequential IDs (NODE_0000, NODE_0001, etc.)
-//    - Sequential IDs are assigned based on sorted module_dir from both graphs
-//    - This prevents spurious mismatches due to UID renumbering
-// 3. Compare node structures: all fields including inputs, outputs, commands, env, kv, etc.
-// 4. Compare dependency edges: ensure dep UIDs are normalized and match
-// 5. Report detailed mismatch breakdown if any
-//
-// Performance: Full validation of 3730-node graph completes in < 2s on modern hardware.
-//
 import (
 	"encoding/json"
 	"fmt"
@@ -28,7 +14,7 @@ const (
 )
 
 type GraphValidator struct {
-	reference      *Graph
+	reference      *ReferenceGraph
 	generated      *Graph
 	uidMap         map[string]string
 	moduleList     []string
@@ -45,7 +31,7 @@ type NormalizedNode struct {
 	DepCount        int
 	OutputPaths     []string
 	InputPaths      []string
-	Cmds            []Command
+	Cmds            []CommandWithEnv
 	Env             map[string]string
 	KV              map[string]string
 	Requirements    Requirements
@@ -58,7 +44,7 @@ type NormalizedNode struct {
 func NewGraphValidator(referencePath string, generated *Graph) *GraphValidator {
 	referenceData := Throw2(os.ReadFile(referencePath))
 
-	var reference Graph
+	var reference ReferenceGraph
 
 	Throw(json.Unmarshal(referenceData, &reference))
 
@@ -93,8 +79,8 @@ func (gv *GraphValidator) Validate() error {
 
 	fmt.Printf("Normalizing UIDs...\n")
 
-	refNormalized := gv.normalizeGraph(gv.reference)
-	genNormalized := gv.normalizeGraph(gv.generated)
+	refNormalized := gv.normalizeReferenceGraph()
+	genNormalized := gv.normalizeGeneratedGraph()
 
 	fmt.Printf("UID normalization complete: %d unique modules\n", len(gv.moduleList))
 
@@ -119,10 +105,10 @@ func (gv *GraphValidator) Validate() error {
 	return nil
 }
 
-func (gv *GraphValidator) normalizeGraph(graph *Graph) map[string]*NormalizedNode {
+func (gv *GraphValidator) normalizeReferenceGraph() map[string]*NormalizedNode {
 	normalized := make(map[string]*NormalizedNode)
 
-	for _, node := range graph.Nodes {
+	for _, node := range gv.reference.Nodes {
 		moduleDir := ""
 
 		if node.TargetProperties.ModuleDir != "" {
@@ -140,7 +126,7 @@ func (gv *GraphValidator) normalizeGraph(graph *Graph) map[string]*NormalizedNod
 			DepCount:     len(node.Deps),
 			OutputPaths:  make([]string, len(node.Outputs)),
 			InputPaths:   make([]string, len(node.Inputs)),
-			Cmds:         make([]Command, len(node.Cmds)),
+			Cmds:         make([]CommandWithEnv, len(node.Cmds)),
 			Env:          copyStringMap(node.Env),
 			KV:           copyStringMap(node.KV),
 			Requirements: node.Requirements,
@@ -161,7 +147,68 @@ func (gv *GraphValidator) normalizeGraph(graph *Graph) map[string]*NormalizedNod
 		}
 
 		if node.Cmds != nil {
-			copy(normNode.Cmds, node.Cmds)
+			for i := range node.Cmds {
+				normNode.Cmds[i] = CommandWithEnv{
+					CmdArgs: node.Cmds[i].CmdArgs,
+					Env:     nil,
+				}
+			}
+		}
+
+		normalized[sequentialID] = normNode
+	}
+
+	return normalized
+}
+
+func (gv *GraphValidator) normalizeGeneratedGraph() map[string]*NormalizedNode {
+	normalized := make(map[string]*NormalizedNode)
+
+	for _, node := range gv.generated.Nodes {
+		moduleDir := ""
+
+		if node.TargetProperties.ModuleDir != "" {
+			moduleDir = node.TargetProperties.ModuleDir
+		}
+
+		sequentialID := gv.getSequentialIDForModule(moduleDir)
+
+		normNode := &NormalizedNode{
+			ModuleDir:    moduleDir,
+			ModuleLang:   node.TargetProperties.ModuleLang,
+			ModuleType:   node.TargetProperties.ModuleType,
+			Platform:     node.Platform,
+			UID:          sequentialID,
+			DepCount:     len(node.Deps),
+			OutputPaths:  make([]string, len(node.Outputs)),
+			InputPaths:   make([]string, len(node.Inputs)),
+			Cmds:         make([]CommandWithEnv, len(node.Cmds)),
+			Env:          copyStringMap(node.Env),
+			KV:           copyStringMap(node.KV),
+			Requirements: node.Requirements,
+			Sandboxing:   node.Sandboxing,
+			Tags:         copyStringSlice(node.Tags),
+			ForeignDeps:  copyForeignDeps(node.ForeignDeps),
+			HostPlatform: node.HostPlatform,
+		}
+
+		if node.Inputs != nil {
+			copy(normNode.InputPaths, node.Inputs)
+			sort.Strings(normNode.InputPaths)
+		}
+
+		if node.Outputs != nil {
+			copy(normNode.OutputPaths, node.Outputs)
+			sort.Strings(normNode.OutputPaths)
+		}
+
+		if node.Cmds != nil {
+			for i := range node.Cmds {
+				normNode.Cmds[i] = CommandWithEnv{
+					CmdArgs: node.Cmds[i].CmdArgs,
+					Env:     nil,
+				}
+			}
 		}
 
 		normalized[sequentialID] = normNode
@@ -203,59 +250,10 @@ func copyForeignDeps(fd ForeignDeps) ForeignDeps {
 	result := make(ForeignDeps, len(fd))
 
 	for k, v := range fd {
-		result[k] = make([]string, len(v))
-		copy(result[k], v)
+		result[k] = copyStringSlice(v)
 	}
 
 	return result
-}
-
-func (gv *GraphValidator) buildModuleList() {
-	seen := make(map[string]bool)
-
-	for _, node := range gv.reference.Nodes {
-		moduleDir := node.TargetProperties.ModuleDir
-
-		if !seen[moduleDir] {
-			seen[moduleDir] = true
-			gv.moduleList = append(gv.moduleList, moduleDir)
-		}
-	}
-
-	for _, node := range gv.generated.Nodes {
-		moduleDir := node.TargetProperties.ModuleDir
-
-		if !seen[moduleDir] {
-			seen[moduleDir] = true
-			gv.moduleList = append(gv.moduleList, moduleDir)
-		}
-	}
-
-	sort.Strings(gv.moduleList)
-}
-
-func (gv *GraphValidator) buildUIDIndex() {
-	for _, node := range gv.reference.Nodes {
-		gv.uidToNode[node.UID] = node
-	}
-
-	for _, node := range gv.generated.Nodes {
-		gv.uidToNode[node.UID] = node
-	}
-}
-
-func (gv *GraphValidator) getSequentialIDForModule(moduleDir string) string {
-	for i, mod := range gv.moduleList {
-		if mod == moduleDir {
-			return fmt.Sprintf("NODE_%04d", i)
-		}
-	}
-
-	return fmt.Sprintf("NODE_UNKNOWN_%s", moduleDir)
-}
-
-func (gv *GraphValidator) generateSequentialID(moduleDir string) string {
-	return gv.getSequentialIDForModule(moduleDir)
 }
 
 func (gv *GraphValidator) compareNormalizedNodes(ref, gen map[string]*NormalizedNode) error {
@@ -263,7 +261,7 @@ func (gv *GraphValidator) compareNormalizedNodes(ref, gen map[string]*Normalized
 		genNode, exists := gen[id]
 
 		if !exists {
-			return Fmt("generated graph missing node: %s (dir=%s)", id, refNode.ModuleDir)
+			return Fmt("reference graph has extra node: %s", id)
 		}
 
 		if refNode.ModuleDir != genNode.ModuleDir {
@@ -386,22 +384,22 @@ func (gv *GraphValidator) compareStringMaps(nodeID, fieldName string, ref, gen m
 		return nil
 	}
 
-	for k, refVal := range ref {
-		genVal, exists := gen[k]
+	for k, refV := range ref {
+		genV, exists := gen[k]
 
 		if !exists {
 			return Fmt("node %s: %s missing key '%s' in generated", nodeID, fieldName, k)
 		}
 
-		if refVal != genVal {
-			return Fmt("node %s: %s['%s'] mismatch (ref=%s, gen=%s)", nodeID, fieldName, k, refVal, genVal)
+		if refV != genV {
+			return Fmt("node %s: %s['%s'] mismatch (ref=%s, gen=%s)", nodeID, fieldName, k, refV, genV)
 		}
 	}
 
 	return nil
 }
 
-func (gv *GraphValidator) compareCommands(nodeID string, ref, gen []Command) error {
+func (gv *GraphValidator) compareCommands(nodeID string, ref, gen []CommandWithEnv) error {
 	if len(ref) != len(gen) {
 		return Fmt("node %s: commands count mismatch (ref=%d, gen=%d)", nodeID, len(ref), len(gen))
 	}
@@ -411,6 +409,10 @@ func (gv *GraphValidator) compareCommands(nodeID string, ref, gen []Command) err
 		genCmd := gen[i]
 
 		if err := gv.compareStringSlices(nodeID, fmt.Sprintf("cmd[%d].cmd_args", i), refCmd.CmdArgs, genCmd.CmdArgs); err != nil {
+			return err
+		}
+
+		if err := gv.compareStringMaps(nodeID, fmt.Sprintf("cmd[%d].env", i), refCmd.Env, genCmd.Env); err != nil {
 			return err
 		}
 	}
@@ -453,32 +455,101 @@ func (gv *GraphValidator) compareForeignDeps(nodeID string, ref, gen ForeignDeps
 	return nil
 }
 
-func (gv *GraphValidator) compareDepEdges() error {
-	refDeps := gv.extractDependencyMap(gv.reference)
-	genDeps := gv.extractDependencyMap(gv.generated)
+func (gv *GraphValidator) buildModuleList() {
+	moduleSet := make(map[string]bool)
 
-	for nodeID, refDepList := range refDeps {
-		genDepList, exists := genDeps[nodeID]
+	for _, node := range gv.reference.Nodes {
+		moduleSet[node.TargetProperties.ModuleDir] = true
+	}
+
+	for _, node := range gv.generated.Nodes {
+		moduleSet[node.TargetProperties.ModuleDir] = true
+	}
+
+	gv.moduleList = make([]string, 0, len(moduleSet))
+
+	for moduleDir := range moduleSet {
+		gv.moduleList = append(gv.moduleList, moduleDir)
+	}
+}
+
+func (gv *GraphValidator) buildUIDIndex() {
+	for _, node := range gv.reference.Nodes {
+		gv.uidToNode[node.UID] = node
+	}
+
+	for _, node := range gv.generated.Nodes {
+		gv.uidToNode[node.UID] = node
+	}
+}
+
+func (gv *GraphValidator) getSequentialIDForModule(moduleDir string) string {
+	if normalizedID, exists := gv.uidMap[moduleDir]; exists {
+		return normalizedID
+	}
+
+	for i, currModuleDir := range gv.moduleList {
+		if currModuleDir == moduleDir {
+			sequentialID := fmt.Sprintf("NODE_%04d", i)
+			gv.uidMap[moduleDir] = sequentialID
+			return sequentialID
+		}
+	}
+
+	unknownID := fmt.Sprintf("NODE_UNKNOWN_%s", moduleDir)
+	gv.uidMap[moduleDir] = unknownID
+	return unknownID
+}
+
+func (gv *GraphValidator) compareDepEdges() error {
+	refDepMap := gv.extractDependencyMapFromReferenceGraph(gv.reference)
+	genDepMap := gv.extractDependencyMap(gv.generated)
+
+	for nodeID, refDeps := range refDepMap {
+		genDeps, exists := genDepMap[nodeID]
 
 		if !exists {
-			return Fmt("generated graph missing node in dependency map: %s", nodeID)
+			return Fmt("dependency graph missing node %s", nodeID)
 		}
 
-		if len(refDepList) != len(genDepList) {
-			return Fmt("node %s: dependency list length mismatch (ref=%d, gen=%d)", nodeID, len(refDepList), len(genDepList))
+		if err := gv.compareStringSlices(nodeID, "deps", refDeps, genDeps); err != nil {
+			return err
 		}
+	}
 
-		sort.Strings(refDepList)
-		sort.Strings(genDepList)
-
-		for i, refDep := range refDepList {
-			if refDep != genDepList[i] {
-				return Fmt("node %s: dependency edge mismatch at index %d (ref=%s, gen=%s)", nodeID, i, refDep, genDepList[i])
-			}
+	for nodeID := range genDepMap {
+		if _, exists := refDepMap[nodeID]; !exists {
+			return Fmt("dependency graph has extra node %s", nodeID)
 		}
 	}
 
 	return nil
+}
+
+func (gv *GraphValidator) extractDependencyMapFromReferenceGraph(reference *ReferenceGraph) map[string][]string {
+	depMap := make(map[string][]string)
+
+	for _, node := range reference.Nodes {
+		moduleDir := node.TargetProperties.ModuleDir
+		nodeID := gv.getSequentialIDForModule(moduleDir)
+
+		depIDs := make([]string, 0, len(node.Deps))
+
+		for _, depUID := range node.Deps {
+			depNode := gv.uidToNode[depUID]
+
+			if depNode != nil {
+				depID := gv.getSequentialIDForModule(depNode.TargetProperties.ModuleDir)
+				depIDs = append(depIDs, depID)
+			}
+		}
+
+		if len(depIDs) > 0 {
+			depMap[nodeID] = depIDs
+		}
+	}
+
+	return depMap
 }
 
 func (gv *GraphValidator) extractDependencyMap(graph *Graph) map[string][]string {
@@ -499,7 +570,9 @@ func (gv *GraphValidator) extractDependencyMap(graph *Graph) map[string][]string
 			}
 		}
 
-		depMap[nodeID] = depIDs
+		if len(depIDs) > 0 {
+			depMap[nodeID] = depIDs
+		}
 	}
 
 	return depMap

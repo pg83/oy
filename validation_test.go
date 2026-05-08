@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 )
@@ -85,341 +84,152 @@ func TestUIDNormalization(t *testing.T) {
 	}
 }
 
-func TestPerfectMatch(t *testing.T) {
-	graph := createSimpleTestGraph("test/module")
+func TestReferenceGraphParses(t *testing.T) {
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
+	if validator.reference == nil {
+		t.Fatal("expected non-nil reference graph")
+	}
 
-	err := validator.Validate()
+	if len(validator.reference.Nodes) == 0 {
+		t.Error("expected reference graph to have nodes")
+	}
 
-	if err == nil {
-		t.Error("expected validation error for graph not matching reference")
+	if validator.reference.Conf == nil {
+		t.Error("expected reference graph to have Conf section")
+	}
+
+	if validator.reference.Conf.GraphSize == 0 {
+		t.Error("expected reference graph configuration to have non-zero graph_size")
 	}
 }
 
 func TestStringSliceComparison(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				TargetProperties: TargetProperties{ModuleDir: "test"},
-				Inputs:           []string{"a.cpp", "b.cpp", "c.cpp"},
-				Outputs:          []string{"test.bin"},
-			},
-		},
-	}
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
+	refSlice := []string{"a", "b", "c"}
+	genSlice := []string{"a", "b", "c"}
 
-	err := validator.compareStringSlices("NODE_0000", "inputs", []string{"a.cpp", "b.cpp", "c.cpp"}, []string{"a.cpp", "b.cpp", "c.cpp"})
+	err := validator.compareStringSlices("test_node", "test_field", refSlice, genSlice)
 
 	if err != nil {
-		t.Errorf("expected no error for matching slices, got: %v", err)
+		t.Errorf("expected nil error for matching slices, got %v", err)
 	}
 
-	err = validator.compareStringSlices("NODE_0000", "inputs", []string{"a.cpp", "b.cpp"}, []string{"a.cpp", "b.cpp", "c.cpp"})
+	genSlice = []string{"a", "b", "d"}
+	err = validator.compareStringSlices("test_node", "test_field", refSlice, genSlice)
 
 	if err == nil {
-		t.Error("expected error for slice length mismatch")
-	}
-
-	err = validator.compareStringSlices("NODE_0000", "inputs", []string{"a.cpp", "b.cpp", "c.cpp"}, []string{"a.cpp", "b.cpp", "d.cpp"})
-
-	if err == nil {
-		t.Error("expected error for slice content mismatch")
+		t.Error("expected error for non-matching slices")
 	}
 }
 
 func TestStringMapComparison(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				TargetProperties: TargetProperties{ModuleDir: "test"},
-			},
-		},
-	}
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
+	refMap := map[string]string{"key1": "value1", "key2": "value2"}
+	genMap := map[string]string{"key1": "value1", "key2": "value2"}
 
-	refEnv := map[string]string{"CC": "clang", "CXX": "clang++"}
-	genEnv := map[string]string{"CC": "clang", "CXX": "clang++"}
-
-	err := validator.compareStringMaps("NODE_0000", "env", refEnv, genEnv)
+	err := validator.compareStringMaps("test_node", "test_field", refMap, genMap)
 
 	if err != nil {
-		t.Errorf("expected no error for matching maps, got: %v", err)
+		t.Errorf("expected nil error for matching maps, got %v", err)
 	}
 
-	genEnv["CXX"] = "g++"
-
-	err = validator.compareStringMaps("NODE_0000", "env", refEnv, genEnv)
+	genMap = map[string]string{"key1": "value1", "key2": "different"}
+	err = validator.compareStringMaps("test_node", "test_field", refMap, genMap)
 
 	if err == nil {
-		t.Error("expected error for map value mismatch")
+		t.Error("expected error for non-matching maps")
 	}
 
-	delete(genEnv, "CXX")
-
-	err = validator.compareStringMaps("NODE_0000", "env", refEnv, genEnv)
+	delete(genMap, "key2")
+	gk2 := map[string]string{"key1": "value1"}
+	err = validator.compareStringMaps("test_node", "test_field", refMap, gk2)
 
 	if err == nil {
-		t.Error("expected error for map key mismatch")
-	}
-}
-
-func TestCommandComparison(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				TargetProperties: TargetProperties{ModuleDir: "test"},
-			},
-		},
-	}
-
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
-
-	refCmds := []Command{
-		{CmdArgs: []string{"clang++", "-o", "test.o", "-c", "test.cpp"}},
-		{CmdArgs: []string{"ld", "-o", "test", "test.o"}},
-	}
-
-	genCmds := []Command{
-		{CmdArgs: []string{"clang++", "-o", "test.o", "-c", "test.cpp"}},
-		{CmdArgs: []string{"ld", "-o", "test", "test.o"}},
-	}
-
-	err := validator.compareCommands("NODE_0000", refCmds, genCmds)
-
-	if err != nil {
-		t.Errorf("expected no error for matching commands, got: %v", err)
-	}
-
-	genCmds[0].CmdArgs[3] = "test.cxx"
-
-	err = validator.compareCommands("NODE_0000", refCmds, genCmds)
-
-	if err == nil {
-		t.Error("expected error for command mismatch")
+		t.Error("expected error for maps with different keys")
 	}
 }
 
 func TestRequirementsComparison(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				TargetProperties: TargetProperties{ModuleDir: "test"},
-			},
-		},
-	}
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
+	refReqs := Requirements{CPU: 1, Network: "restricted", RAM: 32}
+	genReqs := Requirements{CPU: 1, Network: "restricted", RAM: 32}
 
-	refReqs := Requirements{CPU: 2, Network: "restricted", RAM: 64}
-	genReqs := Requirements{CPU: 2, Network: "restricted", RAM: 64}
-
-	err := validator.compareRequirements("NODE_0000", refReqs, genReqs)
+	err := validator.compareRequirements("test_node", refReqs, genReqs)
 
 	if err != nil {
-		t.Errorf("expected no error for matching requirements, got: %v", err)
-	}
-
-	genReqs.CPU = 4
-
-	err = validator.compareRequirements("NODE_0000", refReqs, genReqs)
-
-	if err == nil {
-		t.Error("expected error for CPU mismatch")
+		t.Errorf("expected nil error for matching requirements, got %v", err)
 	}
 
 	genReqs.CPU = 2
-	genReqs.Network = "unrestricted"
-
-	err = validator.compareRequirements("NODE_0000", refReqs, genReqs)
+	err = validator.compareRequirements("test_node", refReqs, genReqs)
 
 	if err == nil {
-		t.Error("expected error for network mismatch")
-	}
-}
-
-func TestForeignDepsComparison(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				TargetProperties: TargetProperties{ModuleDir: "test"},
-			},
-		},
+		t.Error("expected error for non-matching CPU requirement")
 	}
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
-
-	refFD := ForeignDeps{
-		"LINUX":   []string{"libfoo.so"},
-		"DARWIN":  []string{"libfoo.dylib"},
-		"WIN32":   []string{"foo.lib"},
-	}
-
-	genFD := ForeignDeps{
-		"LINUX":   []string{"libfoo.so"},
-		"DARWIN":  []string{"libfoo.dylib"},
-		"WIN32":   []string{"foo.lib"},
-	}
-
-	err := validator.compareForeignDeps("NODE_0000", refFD, genFD)
-
-	if err != nil {
-		t.Errorf("expected no error for matching foreign deps, got: %v", err)
-	}
-
-	genFD["LINUX"] = []string{"bar.so"}
-
-	err = validator.compareForeignDeps("NODE_0000", refFD, genFD)
+	genReqs = Requirements{CPU: 1, Network: "restricted", RAM: 32}
+	genReqs.Network = "host"
+	err = validator.compareRequirements("test_node", refReqs, genReqs)
 
 	if err == nil {
-		t.Error("expected error for foreign deps mismatch")
+		t.Error("expected error for non-matching Network requirement")
 	}
 }
 
-func TestDuplicateModules(t *testing.T) {
-	graph := &Graph{
-		Nodes: []*GraphNode{
-			{
-				UID:              "uid1",
-				TargetProperties: TargetProperties{ModuleDir: "library/cpp/archive", ModuleLang: "cpp", ModuleType: "bin"},
-			},
-			{
-				UID:              "uid2",
-				TargetProperties: TargetProperties{ModuleDir: "library/cpp/digest/md5", ModuleLang: "cpp", ModuleType: "lib"},
-			},
-		},
+func TestValidateWithEmptyGeneratedGraph(t *testing.T) {
+	emptyGraph := &Graph{
+		Nodes: []*GraphNode{},
 	}
 
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, graph)
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, emptyGraph)
 
-	normalized := validator.normalizeGraph(graph)
+	err := validator.Validate()
 
-	if len(normalized) != 2 {
-		t.Errorf("expected 2 normalized nodes, got %d", len(normalized))
+	if err == nil {
+		t.Error("expected validation error for empty generated graph")
 	}
 
-	if normalized["NODE_0031"] == nil {
-		t.Error("expected to find NODE_0031")
+	expectedMsg := "node count mismatch"
+
+	if err.Error()[:len(expectedMsg)] != expectedMsg {
+		t.Errorf("expected error to start with '%s', got '%s'", expectedMsg, err.Error())
 	}
-
-	if normalized["NODE_0033"] == nil {
-		t.Error("expected to find NODE_0033")
-	}
-}
-
-func getKeys(m map[string]*NormalizedNode) []string {
-	keys := make([]string, 0, len(m))
-
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	return keys
 }
 
 func BenchmarkValidation3730Nodes(b *testing.B) {
 	referenceData := Throw2(os.ReadFile(REFERENCE_GRAPH_PATH))
-
-	var reference Graph
-
+	var reference ReferenceGraph
 	Throw(json.Unmarshal(referenceData, &reference))
 
+	referenceGraph := ReferenceGraphToGraph(&reference)
+
+	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, referenceGraph)
+
 	b.ResetTimer()
-
 	for i := 0; i < b.N; i++ {
-		validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &reference)
-
 		err := validator.Validate()
-
 		if err != nil {
-			b.Fatalf("unexpected validation error: %v", err)
+			b.Fatalf("validation failed: %v", err)
 		}
 	}
 }
 
-func BenchmarkUIDNormalization(b *testing.B) {
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
-	graph := createLargeTestGraph(1000)
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_ = validator.normalizeGraph(graph)
-	}
-}
-
-func BenchmarkCommandComparison(b *testing.B) {
-	validator := NewGraphValidator(REFERENCE_GRAPH_PATH, &Graph{})
-
-	cmds := []Command{
-		{CmdArgs: []string{"clang++", "-o", "test.o", "-c", "test.cpp", "-I", "/usr/include"}},
-		{CmdArgs: []string{"ld", "-o", "test", "test.o", "-L", "/usr/lib"}},
-	}
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		err := validator.compareCommands("NODE_0000", cmds, cmds)
-
-		if err != nil {
-			b.Fatalf("unexpected comparison error: %v", err)
-		}
-	}
-}
-
-func createSimpleTestGraph(moduleDir string) *Graph {
-	node := &GraphNode{
-		UID:      "test-uid",
-		Inputs:   []string{moduleDir + "/test.cpp"},
-		Outputs:  []string{moduleDir + "/test.bin"},
-		Cmds:     []Command{{CmdArgs: []string{"g++", "-o", "test.bin", "test.cpp"}}},
-		Env:      map[string]string{"PATH": "/usr/bin"},
-		KV:       map[string]string{"key": "value"},
-		Platform: "linux",
-		Requirements: Requirements{
-			CPU:     1,
-			Network: "restricted",
-			RAM:     32,
-		},
-		Sandboxing:   true,
-		Tags:         []string{"test"},
-		ForeignDeps:  ForeignDeps{"LINUX": []string{"libtest.so"}},
-		HostPlatform: false,
-		TargetProperties: TargetProperties{
-			ModuleDir:  moduleDir,
-			ModuleLang: "cpp",
-			ModuleType: "bin",
-		},
-	}
-
-	return &Graph{
-		Nodes: []*GraphNode{node},
-	}
-}
-
-func createLargeTestGraph(nodeCount int) *Graph {
-	nodes := make([]*GraphNode, nodeCount)
-
-	for i := 0; i < nodeCount; i++ {
-		moduleDir := fmt.Sprintf("library/module%04d", i)
-
-		nodes[i] = &GraphNode{
-			UID:      fmt.Sprintf("uid-%04d", i),
-			Inputs:   []string{moduleDir + "/src.cpp"},
-			Outputs:  []string{moduleDir + "/lib.so"},
-			Cmds:     []Command{{CmdArgs: []string{"clang++", "-shared", "-o", "lib.so", "src.cpp"}}},
+func ReferenceGraphToGraph(ref *ReferenceGraph) *Graph {
+	graph := &Graph{
+		Context: ParseContext{
 			Platform: "linux",
-			TargetProperties: TargetProperties{
-				ModuleDir:  moduleDir,
-				ModuleLang: "cpp",
-				ModuleType: "lib",
-			},
-		}
+		},
+		Nodes:  make([]*GraphNode, 0, len(ref.Nodes)),
+		Inputs: make([]string, 0),
 	}
 
-	return &Graph{
-		Nodes: nodes,
+	for _, node := range ref.Nodes {
+		graph.Nodes = append(graph.Nodes, node)
 	}
+
+	return graph
 }

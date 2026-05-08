@@ -39,7 +39,7 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 	}
 
 	for _, input := range gb.collectInputs(startModule, transitiveDeps) {
-		graph.AddInput(input, "")
+		graph.AddInput(input)
 	}
 
 	return graph
