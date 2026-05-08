@@ -25,17 +25,36 @@ func main() {
 
 		fullVars := NewBuildContextVariableSet(result.Ctx, vars)
 
-		if len(result.Args) == 0 {
+		registry := NewModuleRegistry()
+		ctx := ParseContext{
+			Platform:   "linux",
+			TargetPath: "",
+			Language:   result.Ctx.Language,
+			Musl:       result.Ctx.Musl,
+		}
+		graph := NewGraph(ctx)
+		parser := NewFileParser(registry, graph, result.Ctx, fullVars)
+
+		targetPath := ""
+		for _, arg := range os.Args[1:] {
+			if arg == "lex" || arg == "--musl" ||
+				arg[:13] == "--target-platform" ||
+				arg[:21] == "--host-platform-flag" ||
+				arg[:23] == "--target-platform-flag" ||
+				arg[:11] == "--language=" {
+				continue
+			}
+			if arg != "" && arg[0] != '-' {
+				targetPath = arg
+				break
+			}
+		}
+
+		if targetPath == "" {
 			fmt.Printf("Usage: ymake [flags] <target-path>\n")
 			fmt.Printf("Example: ymake --musl tools/archiver\n")
 			os.Exit(1)
 		}
-
-		targetPath := result.Args[0]
-
-		registry := NewModuleRegistry()
-		graph := NewGraph(result.Ctx)
-		parser := NewFileParser(registry, graph, result.Ctx, fullVars)
 
 		yaMakePath := ""
 		if IsDir(targetPath) {
