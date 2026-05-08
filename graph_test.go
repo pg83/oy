@@ -1,31 +1,43 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 )
 
 func TestGraphNodeFields(t *testing.T) {
-	node := &GraphNode{
-		UID:      "test-uid",
-		SelfUID:  "test-self-uid",
-		StatsUID: "test-stats-uid",
-		Cmds: []Command{
-			{
-				CmdArgs: []string{"clang++", "-o", "output"},
-				Env: map[string]string{
-					"PATH": "/usr/bin",
-				},
-			},
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node := NewGraphNode(ctx)
+	node.UID = "test-uid"
+	node.SelfUID = "test-self-uid"
+	node.StatsUID = "test-stats-uid"
+	node.Cmds = []Command{
+		{
+			CmdArgs: []string{"clang++", "-o", "output"},
 		},
-		Inputs:  []string{"$(SOURCE_ROOT)/main.cpp"},
-		Outputs: []string{"$(BUILD_ROOT)/main"},
-		Deps:    []string{"dep1", "dep2"},
-		KV:      map[string]string{"key": "value"},
-		TargetProperties: TargetProperties{
-			ModuleDir:  "tools/test",
-			ModuleLang: "cpp",
-			ModuleType: "bin",
-		},
+	}
+	node.Env = map[string]string{
+		"PATH": "/usr/bin",
+	}
+	node.Platform = "default-linux-x86_64"
+	node.Requirements = Requirements{CPU: 1, Network: "restricted", RAM: 32}
+	node.Sandboxing = true
+	node.Tags = []string{"tool"}
+	node.ForeignDeps = ForeignDeps{"pip": []string{"requests==2.28.0"}}
+	node.HostPlatform = true
+	node.Inputs = []string{"$(SOURCE_ROOT)/main.cpp"}
+	node.Outputs = []string{"$(BUILD_ROOT)/main"}
+	node.Deps = []string{"dep1", "dep2"}
+	node.KV = map[string]string{"key": "value"}
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  "tools/test",
+		ModuleLang: "cpp",
+		ModuleType: "bin",
 	}
 
 	if node.UID != "test-uid" {
@@ -79,30 +91,61 @@ func TestGraphNodeFields(t *testing.T) {
 	if node.TargetProperties.ModuleType != "bin" {
 		t.Errorf("Expected ModuleType 'bin', got '%s'", node.TargetProperties.ModuleType)
 	}
+
+	if node.Platform != "default-linux-x86_64" {
+		t.Errorf("Expected Platform 'default-linux-x86_64', got '%s'", node.Platform)
+	}
+
+	if node.Requirements.CPU != 1 {
+		t.Errorf("Expected Requirements.CPU 1, got %d", node.Requirements.CPU)
+	}
+
+	if node.Requirements.Network != "restricted" {
+		t.Errorf("Expected Requirements.Network 'restricted', got '%s'", node.Requirements.Network)
+	}
+
+	if node.Requirements.RAM != 32 {
+		t.Errorf("Expected Requirements.RAM 32, got %d", node.Requirements.RAM)
+	}
+
+	if !node.Sandboxing {
+		t.Errorf("Expected Sandboxing true, got false")
+	}
+
+	if len(node.Tags) != 1 || node.Tags[0] != "tool" {
+		t.Errorf("Expected Tags ['tool'], got %v", node.Tags)
+	}
+
+	if node.ForeignDeps["pip"][0] != "requests==2.28.0" {
+		t.Errorf("Expected ForeignDeps, got %v", node.ForeignDeps)
+	}
+
+	if !node.HostPlatform {
+		t.Errorf("Expected HostPlatform true, got false")
+	}
 }
 
 func TestGraphAddNode(t *testing.T) {
 	ctx := ParseContext{
-		Platform:   "linux",
+		Platform:   "default-linux-x86_64",
 		TargetPath: "tools/archiver",
 		Language:   "cpp",
 	}
 
 	graph := NewGraph(ctx)
 
-	node := &GraphNode{
-		UID:     "test-uid",
-		SelfUID: "test-self-uid",
-		Cmds:    []Command{{}},
-		Inputs:  []string{},
-		Outputs: []string{},
-		Deps:    []string{},
-		KV:      map[string]string{},
-		TargetProperties: TargetProperties{
-			ModuleDir:  "test",
-			ModuleLang: "cpp",
-			ModuleType: "bin",
-		},
+	node := NewGraphNode(ctx)
+	node.UID = "test-uid"
+	node.SelfUID = "test-self-uid"
+	node.Cmds = []Command{{}}
+	node.Inputs = []string{}
+	node.Outputs = []string{}
+	node.Deps = []string{}
+	node.KV = map[string]string{}
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  "test",
+		ModuleLang: "cpp",
+		ModuleType: "bin",
 	}
 
 	graph.AddNode(node)
@@ -148,7 +191,7 @@ func TestGenerateStatsUID(t *testing.T) {
 
 func TestGraphMatchesSgJsonFormat(t *testing.T) {
 	ctx := ParseContext{
-		Platform:   "linux",
+		Platform:   "default-linux-x86_64",
 		TargetPath: "tools/archiver",
 		Language:   "cpp",
 	}
@@ -157,31 +200,30 @@ func TestGraphMatchesSgJsonFormat(t *testing.T) {
 
 	uid := NewUID([]byte("tools/archiver"))
 
-	node := &GraphNode{
-		UID:      uid,
-		SelfUID:  "D29NTmzE_1tS8GbzG5m7Qw",
-		StatsUID: "916007d422fd2aeff8a8d863e6bd3ced",
-		Cmds: []Command{
-			{
-				CmdArgs: []string{"clang++", "-o", "output"},
-				Env: map[string]string{
-					"ARCADIA_ROOT_DISTBUILD": "$(SOURCE_ROOT)",
-				},
-			},
+	node := NewGraphNode(ctx)
+	node.UID = uid
+	node.SelfUID = "D29NTmzE_1tS8GbzG5m7Qw"
+	node.StatsUID = "916007d422fd2aeff8a8d863e6bd3ced"
+	node.Cmds = []Command{
+		{
+			CmdArgs: []string{"clang++", "-o", "output"},
 		},
-		Inputs:  []string{"$(SOURCE_ROOT)/main.cpp"},
-		Outputs: []string{"$(BUILD_ROOT)/archiver"},
-		Deps:    []string{"dep1", "dep2"},
-		KV: map[string]string{
-			"p":        "AR",
-			"pc":       "light-red",
-			"show_out": "yes",
-		},
-		TargetProperties: TargetProperties{
-			ModuleDir:  "tools/archiver",
-			ModuleLang: "cpp",
-			ModuleType: "bin",
-		},
+	}
+	node.Env = map[string]string{
+		"ARCADIA_ROOT_DISTBUILD": "$(SOURCE_ROOT)",
+	}
+	node.Inputs = []string{"$(SOURCE_ROOT)/main.cpp"}
+	node.Outputs = []string{"$(BUILD_ROOT)/archiver"}
+	node.Deps = []string{"dep1", "dep2"}
+	node.KV = map[string]string{
+		"p":        "AR",
+		"pc":       "light-red",
+		"show_out": "yes",
+	}
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  "tools/archiver",
+		ModuleLang: "cpp",
+		ModuleType: "bin",
 	}
 
 	graph.AddNode(node)
@@ -208,7 +250,280 @@ func TestGraphMatchesSgJsonFormat(t *testing.T) {
 		t.Errorf("Expected 1 command, got %d", len(graphNode.Cmds))
 	}
 
-	if graphNode.Cmds[0].Env["ARCADIA_ROOT_DISTBUILD"] != "$(SOURCE_ROOT)" {
-		t.Errorf("Expected env ARCADIA_ROOT_DISTBUILD, got '%s'", graphNode.Cmds[0].Env["ARCADIA_ROOT_DISTBUILD"])
+	if graphNode.Env["ARCADIA_ROOT_DISTBUILD"] != "$(SOURCE_ROOT)" {
+		t.Errorf("Expected env ARCADIA_ROOT_DISTBUILD, got '%s'", graphNode.Env["ARCADIA_ROOT_DISTBUILD"])
+	}
+}
+
+func TestNodeEnvironment(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node := NewGraphNode(ctx)
+	node.Env = map[string]string{
+		"PATH":       "/usr/bin",
+		"CPATH":      "/usr/include",
+		"ARCADIA":    "/arcadia",
+		"BUILD_ROOT": "/build",
+	}
+
+	if len(node.Env) != 4 {
+		t.Errorf("Expected 4 env vars, got %d", len(node.Env))
+	}
+
+	if node.Env["PATH"] != "/usr/bin" {
+		t.Errorf("Expected PATH '/usr/bin', got '%s'", node.Env["PATH"])
+	}
+
+	if node.Env["CPATH"] != "/usr/include" {
+		t.Errorf("Expected CPATH '/usr/include', got '%s'", node.Env["CPATH"])
+	}
+}
+
+func TestNodePlatform(t *testing.T) {
+	ctx1 := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node1 := NewGraphNode(ctx1)
+	if node1.Platform != "default-linux-x86_64" {
+		t.Errorf("Expected Platform 'default-linux-x86_64', got '%s'", node1.Platform)
+	}
+
+	ctx2 := ParseContext{
+		Platform:   "default-linux-aarch64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node2 := NewGraphNode(ctx2)
+	if node2.Platform != "default-linux-aarch64" {
+		t.Errorf("Expected Platform 'default-linux-aarch64', got '%s'", node2.Platform)
+	}
+}
+
+func TestNodeRequirements(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node := NewGraphNode(ctx)
+	node.Requirements = Requirements{
+		CPU:     2,
+		Network: "full",
+		RAM:     64,
+	}
+
+	if node.Requirements.CPU != 2 {
+		t.Errorf("Expected CPU 2, got %d", node.Requirements.CPU)
+	}
+
+	if node.Requirements.Network != "full" {
+		t.Errorf("Expected Network 'full', got '%s'", node.Requirements.Network)
+	}
+
+	if node.Requirements.RAM != 64 {
+		t.Errorf("Expected RAM 64, got %d", node.Requirements.RAM)
+	}
+}
+
+func TestNodeSandboxing(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node1 := NewGraphNode(ctx)
+	if !node1.Sandboxing {
+		t.Errorf("Expected default Sandboxing true, got false")
+	}
+
+	node2 := NewGraphNode(ctx)
+	node2.Sandboxing = false
+	if node2.Sandboxing {
+		t.Errorf("Expected Sandboxing false, got true")
+	}
+}
+
+func TestNodeTags(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node1 := NewGraphNode(ctx)
+	if len(node1.Tags) != 0 {
+		t.Errorf("Expected empty tags, got %v", node1.Tags)
+	}
+
+	node2 := NewGraphNode(ctx)
+	node2.Tags = []string{"tool"}
+	if len(node2.Tags) != 1 || node2.Tags[0] != "tool" {
+		t.Errorf("Expected Tags ['tool'], got %v", node2.Tags)
+	}
+
+	node3 := NewGraphNode(ctx)
+	node3.Tags = []string{"tool", "compiler", "binary"}
+	if len(node3.Tags) != 3 {
+		t.Errorf("Expected 3 tags, got %d", len(node3.Tags))
+	}
+}
+
+func TestNodeForeignDeps(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node1 := NewGraphNode(ctx)
+	if node1.ForeignDeps != nil {
+		t.Errorf("Expected nil ForeignDeps, got %v", node1.ForeignDeps)
+	}
+
+	node2 := NewGraphNode(ctx)
+	node2.ForeignDeps = ForeignDeps{
+		"pip": []string{"requests==2.28.0", "numpy==1.24.0"},
+		"npm": []string{"lodash"},
+	}
+
+	if len(node2.ForeignDeps) != 2 {
+		t.Errorf("Expected 2 foreign dep types, got %d", len(node2.ForeignDeps))
+	}
+
+	if len(node2.ForeignDeps["pip"]) != 2 {
+		t.Errorf("Expected 2 pip packages, got %d", len(node2.ForeignDeps["pip"]))
+	}
+
+	if node2.ForeignDeps["pip"][0] != "requests==2.28.0" {
+		t.Errorf("Expected pip package 'requests==2.28.0', got '%s'", node2.ForeignDeps["pip"][0])
+	}
+
+	if node2.ForeignDeps["npm"][0] != "lodash" {
+		t.Errorf("Expected npm package 'lodash', got '%s'", node2.ForeignDeps["npm"][0])
+	}
+}
+
+func TestNodeHostPlatform(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node1 := NewGraphNode(ctx)
+	if node1.HostPlatform {
+		t.Errorf("Expected default HostPlatform false, got true")
+	}
+
+	node2 := NewGraphNode(ctx)
+	node2.HostPlatform = true
+	if !node2.HostPlatform {
+		t.Errorf("Expected HostPlatform true, got false")
+	}
+}
+
+func TestGraphJsonSerialization(t *testing.T) {
+	ctx := ParseContext{
+		Platform:   "default-linux-x86_64",
+		TargetPath: "tools/test",
+		Language:   "cpp",
+	}
+
+	node := NewGraphNode(ctx)
+	node.UID = "test-uid"
+	node.SelfUID = "test-self-uid"
+	node.StatsUID = "test-stats-uid"
+	node.Cmds = []Command{
+		{
+			CmdArgs: []string{"clang++", "-o", "output", "src.cpp"},
+		},
+	}
+	node.Env = map[string]string{
+		"PATH":       "/usr/bin",
+		"CPATH":      "/usr/include",
+		"ARCADIA":    "/arcadia",
+		"BUILD_ROOT": "/build",
+	}
+	node.Inputs = []string{"$(SOURCE_ROOT)/main.cpp", "$(SOURCE_ROOT)/lib.cpp"}
+	node.Outputs = []string{"$(BUILD_ROOT)/main"}
+	node.Deps = []string{"dep1-uid", "dep2-uid"}
+	node.KV = map[string]string{
+		"p":        "AR",
+		"pc":       "light-red",
+		"show_out": "yes",
+	}
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  "tools/test",
+		ModuleLang: "cpp",
+		ModuleType: "bin",
+	}
+	node.Platform = "default-linux-x86_64"
+	node.Requirements = Requirements{
+		CPU:     2,
+		Network: "full",
+		RAM:     64,
+	}
+	node.Sandboxing = true
+	node.Tags = []string{"tool", "compiler"}
+	node.ForeignDeps = ForeignDeps{
+		"pip": []string{"requests==2.28.0"},
+	}
+	node.HostPlatform = true
+
+	data, err := json.MarshalIndent(node, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal node: %v", err)
+	}
+
+	var decoded GraphNode
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal node: %v", err)
+	}
+
+	if decoded.UID != node.UID {
+		t.Errorf("Round-trip failed: UID mismatch")
+	}
+
+	if decoded.SelfUID != node.SelfUID {
+		t.Errorf("Round-trip failed: SelfUID mismatch")
+	}
+
+	if decoded.Platform != node.Platform {
+		t.Errorf("Round-trip failed: Platform mismatch")
+	}
+
+	if len(decoded.Env) != len(node.Env) {
+		t.Errorf("Round-trip failed: Env size mismatch")
+	}
+
+	if decoded.Env["PATH"] != node.Env["PATH"] {
+		t.Errorf("Round-trip failed: Env PATH mismatch")
+	}
+
+	if decoded.Requirements.CPU != node.Requirements.CPU {
+		t.Errorf("Round-trip failed: Requirements.CPU mismatch")
+	}
+
+	if len(decoded.Tags) != len(node.Tags) {
+		t.Errorf("Round-trip failed: Tags size mismatch")
+	}
+
+	if len(decoded.ForeignDeps) != len(node.ForeignDeps) {
+		t.Errorf("Round-trip failed: ForeignDeps size mismatch")
+	}
+
+	if decoded.HostPlatform != node.HostPlatform {
+		t.Errorf("Round-trip failed: HostPlatform mismatch")
 	}
 }
