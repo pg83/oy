@@ -67,6 +67,18 @@ func main() {
 
 		fmt.Printf("Successfully parsed %d modules and generated %d graph nodes\n", registry.Count(), len(graph.Nodes))
 
+		if result.OutputJSON {
+			outputPath := "sg.json"
+			if result.JSONPath != "" {
+				outputPath = result.JSONPath
+			}
+
+			fmt.Printf("Writing graph to %s...\n", outputPath)
+			WriteGraphToFile(graph, outputPath)
+			fmt.Printf("Graph written successfully\n")
+			os.Exit(0)
+		}
+
 	}); exc != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", exc.AsError())
 		os.Exit(1)

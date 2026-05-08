@@ -3,6 +3,9 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"fmt"
+	"os"
+	"runtime"
 	"sync"
 )
 
@@ -94,4 +97,66 @@ func (g *Graph) AddInput(path string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.Inputs = append(g.Inputs, path)
+}
+
+func (g *Graph) ToOutput() *GraphOutput {
+	output := &GraphOutput{}
+
+	hostname := Throw2(os.Hostname())
+	username := os.Getenv("USER")
+	if username == "" {
+		username = "unknown"
+	}
+	sessionID := generateSessionID()
+
+	output.Conf = &Conf{
+		Cache: true,
+		Platform: g.Context.Platform,
+		GraphSize: len(g.Nodes),
+		Gsid: fmt.Sprintf("USER:%s YA:%s", username, sessionID),
+		Description: &Description{
+			Host: hostname,
+			Platform: runtime.GOOS + "-" + runtime.GOARCH,
+			User: username,
+		},
+		ExecutionCost: &ExecutionCost{
+			CPU: 0,
+			EvaluationErrors: 0,
+		},
+		DefaultNodeRequirements: map[string]interface{}{
+			"network": "restricted",
+		},
+		ExplicitRemoteStoreUpload: true,
+		Keepon: true,
+		MinReqsErrors: 0,
+		Resources: []Resource{},
+	}
+
+	output.Graph = g.Nodes
+	output.Inputs = g.Inputs
+	output.Result = g.calculateResult()
+
+	return output
+}
+
+func (g *Graph) calculateResult() []string {
+	if len(g.Nodes) == 0 {
+		return []string{}
+	}
+
+	rootNode := g.findRootNode()
+	if rootNode != nil {
+		return []string{rootNode.UID}
+	}
+
+	return []string{g.Nodes[0].UID}
+}
+
+func (g *Graph) findRootNode() *GraphNode {
+	for _, node := range g.Nodes {
+		if len(node.Deps) == 0 {
+			return node
+		}
+	}
+	return nil
 }

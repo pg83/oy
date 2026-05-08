@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -54,4 +55,54 @@ func TestParseToolsArchiver(t *testing.T) {
 	if !ok || value != "_Builders" {
 		t.Errorf("expected IDE_FOLDER='_Builders', got '%s', ok=%v", value, ok)
 	}
+}
+
+func TestGraphOutputMatchReference(t *testing.T) {
+	path := "/home/pg/monorepo/yatool_orig/tools/archiver/ya.make"
+
+	buildCtx := NewBuildContext()
+	buildCtx.Platform = PlatformLinux
+
+	registry := NewModuleRegistry()
+	vars := NewMemoryVariableSet()
+	fullVars := NewBuildContextVariableSet(buildCtx, vars)
+	graph := NewGraph(ParseContext{
+		Platform: "linux",
+	})
+
+	parser := NewFileParser(registry, graph, buildCtx, fullVars)
+	parser.Parse(path)
+
+	output := graph.ToOutput()
+
+	if len(output.Graph) == 0 {
+		t.Fatal("expected graph nodes")
+	}
+
+	if output.Conf == nil {
+		t.Fatal("expected conf section")
+	}
+
+	if output.Conf.Platform != "linux" {
+		t.Errorf("expected platform=linux, got %s", output.Conf.Platform)
+	}
+
+	if output.Conf.GraphSize != len(output.Graph) {
+		t.Errorf("expected graph_size=%d, got %d", len(output.Graph), output.Conf.GraphSize)
+	}
+
+	if output.Conf.Gsid == "" && output.Conf.Description == nil {
+		t.Fatal("expected description section")
+	}
+
+	if output.Conf.Description != nil && output.Conf.Description.Platform == "" {
+		t.Error("expected non-empty platform in description")
+	}
+
+	if len(output.Result) == 0 {
+		t.Error("expected non-empty result section")
+	}
+
+	fmt.Printf("Graph output: %d nodes, graph_size=%d, platform=%s\n",
+		len(output.Graph), output.Conf.GraphSize, output.Conf.Platform)
 }
