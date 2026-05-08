@@ -40,7 +40,7 @@ func main() {
 		for _, arg := range os.Args[1:] {
 			if arg == "lex" || arg == "--musl" || strings.HasPrefix(arg, "--target-platform") ||
 				strings.HasPrefix(arg, "--host-platform-flag") || strings.HasPrefix(arg, "--target-platform-flag") ||
-				strings.HasPrefix(arg, "--language=") {
+				strings.HasPrefix(arg, "--language=") || strings.HasPrefix(arg, "--validate-against=") {
 				continue
 			}
 			if arg != "" && arg[0] != '-' {
@@ -76,6 +76,16 @@ func main() {
 			fmt.Printf("Writing graph to %s...\n", outputPath)
 			WriteGraphToFile(graph, outputPath)
 			fmt.Printf("Graph written successfully\n")
+
+			if result.ValidatePath != "" {
+				comparison := CompareGraphFiles(result.ValidatePath, outputPath, GraphComparisonOptions{})
+				if err := comparison.Err(); err != nil {
+					Throw(err)
+				}
+
+				fmt.Printf("Graph validation passed against %s\n", result.ValidatePath)
+			}
+
 			os.Exit(0)
 		}
 
