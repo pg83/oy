@@ -1,0 +1,11 @@
+#!/bin/sh
+
+export PYTHONDONTWRITEBYTECODE=1
+export LD_LIBRARY_PATH=/home/pg/.claude/downloads/usr/lib
+export PATH=/home/pg/venv/bin/:/ix/realm/llm/bin/:$PATH
+
+. /ix/realm/llm/env
+
+exec \
+    /home/pg/.claude/downloads/usr/lib/ld-linux-x86-64.so.2 \
+    /home/pg/.local/bin/claude "${@}"
