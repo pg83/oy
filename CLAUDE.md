@@ -1,115 +1,100 @@
 # CLAUDE.md - ya/ymake Build System Reimplementation
 
-This document provides a primer for new team members working on the ya/ymake build system reimplementation project.
+## Mission
 
-## Project Overview
+`GOALS.md` is the authoritative project goal. This repository reimplements enough of ya/ymake in Go to produce a bit-identical execution graph for `/home/pg/monorepo/yatool_orig/tools/archiver`, ignoring only UID renumbering, with graph generation time no greater than 1 second.
 
-**Mission**: Reimplement the ya/ymake build system in Go with the goal of generating a bit-identical dependency graph in under 1 second.
+Final completion requires 100% structural graph equality against the reference output and sub-second generation. Current implementation status is described below and does not yet satisfy the final graph-equality goal.
 
-**Repository**: This Go reimplementation
-**Reference Implementation**: `/home/pg/monorepo/yatool_orig/` (Python/C++ original)
+## Current Repository
 
-**Target**: `tools/archiver` - produce execution graph via `ya make -G tools/archiver`
+This is a flat Go package: all `.go` source files live in the repository root. Do not introduce `cmd/`, `internal/`, or `pkg/` layouts unless the project direction changes.
 
-**Key Requirements**:
-- 100% graph structural match with reference implementation (modulo UID renumbering)
-- Performance: graph generation in < 1 second on modern hardware
-- Parallel parsing of includes and ya.make files
-- Direct graph execution without JSON serialization intermediate
-- Multimodule awareness (semantics depend on target and language flags)
+`go.mod` currently declares `go 1.25.0`. The only declared module dependency is `golang.org/x/sync`.
 
-## Directory Structure
+`STYLE.md` is mandatory. `throw.go` provides exception-style helpers used instead of routine pass-through `if err != nil { return err }` error handling.
 
-This is a **flat Go project** - all `.go` files live in the repository root. No `internal/`, `cmd/`, or `pkg/` subdirectories.
+`run.sh` is not the local Go build command. It is an overseer/wirez wrapper:
 
-```
-/home/pg/monorepo/oy/
-├── .go files (all in root)
-├── throw.go           # Exception-style error handling
-├── STYLE.md           # Code style conventions
-├── GOALS.md           # Project goals (Russian, reference only)
-├── run.sh             # Local build wrapper
-└── claude             # CLI entry point
+```bash
+exec subreaper /home/pg/monorepo/wirez/wirez ... -- /home/pg/monorepo/overseer/overseer "${@}"
 ```
 
-## Reference Implementation Locations
+## Reference Implementation
 
-The reference ya/ymake system at `/home/pg/monorepo/yatool_orig/` contains:
+The reference ya/ymake checkout is `/home/pg/monorepo/yatool_orig`.
 
 | Path | Purpose |
 |------|---------|
-| `devtools/ymake/` | Graph generator (Python/C++) |
-| `devtools/ya/` | Graph merger and orchestrator |
-| `build/` | Build configuration (reference only, not to be interpreted) |
-| `build/scripts/` | Scripts called from graph (OK to call directly) |
-| `tools/archiver/ya.make` | Example target definition |
-| `sg.json` | Reference graph output (3730 nodes) |
+| `devtools/ymake/` | Reference graph generator |
+| `devtools/ya/` | Reference graph merger and orchestrator |
+| `build/` | Reference build semantics input; use for understanding behavior, not as scripts to interpret wholesale |
+| `build/scripts/` | Scripts called by graph nodes; direct calls are acceptable when required by generated commands |
+| `tools/archiver/ya.make` | Reference target definition |
+| `srun.sh` | Reference graph generation example for `tools/archiver` |
+| `sg.json` | Reference graph output, currently 3730 nodes in the checked reference graph |
 
-## Development Setup
+The Go implementation should encode the required semantics directly rather than depend on interpreting the full reference `build/` script layer.
 
-**Requirements**: Go 1.21+ (any standard workstation)
+## Commands
 
-**Building**:
+Executable checks in this repository:
+
 ```bash
-go run *.go <target>
+go test ./...
+go vet ./...
+gofmt -d *.go
 ```
 
-**Reference Graph Generation** (for validation):
+Current CLI examples:
+
 ```bash
-cd /home/pg/monorepo/yatool_orig
-./srun.sh  # generates sg.json for tools/archiver
+go run . /home/pg/monorepo/yatool_orig/tools/archiver
+go run . -G --graph-file=test_sg.json /home/pg/monorepo/yatool_orig/tools/archiver
+go run . --graph-file=test_sg.json /home/pg/monorepo/yatool_orig/tools/archiver
 ```
 
-## The ya.make DSL
+`go run . -G <target>` writes `sg.json` in the current working directory and prints progress lines to stdout before writing the graph file. Do not redirect stdout as if it were graph JSON.
 
-ya.make is a text DSL that defines build modules with dependencies. The same file can have different interpretations depending on build flags (target platform, language, etc.).
+Regenerate the reference graph with:
 
-### Module Types
+```bash
+cd /home/pg/monorepo/yatool_orig && ./srun.sh
+```
+
+The current CLI resolves relative target paths against the workspace and also accepts absolute paths. This workspace does not contain `tools/archiver`, so use the absolute reference path for CLI smoke tests. The integration tests build `tools/archiver` by calling `BuildDependencyGraph` with source root `/home/pg/monorepo/yatool_orig`, so CLI parity with the reference source tree should be verified before documenting it as a final workflow.
+
+## Current Status
+
+Implemented scaffolding includes lexer/parser coverage, module registry behavior, conditionals, recurse handling, transitive dependency traversal, graph output, validation scaffolding, and integration tests for `tools/archiver`.
+
+The current graph builder is module-level. It does not yet produce the reference 3730-node execution graph; current integration tests may skip the known node-count/equality gap. Final acceptance still requires a structural match against the full reference graph modulo UID renumbering.
+
+## ya.make Semantics
+
+`ya.make` is a text DSL that defines build modules, dependencies, sources, recursive includes, and conditional behavior. A single file can have different meanings depending on target path, platform flags, language flags, and variable context.
+
+Common constructs:
 
 ```make
-PROGRAM()    # Executable binary
-LIBRARY()    # Static/shared library
-END()        # Closes module definition
-```
+PROGRAM()
+LIBRARY()
+END()
 
-### Dependencies
-
-```make
 PEERDIR(
     library/cpp/archive
     library/cpp/digest/md5
 )
-```
 
-PEERDIR declares dependency on another module. These form the graph edges.
-
-### Source Files
-
-```make
 SRCS(
     main.cpp
-    md5.cpp
-    archive.cpp
 )
-```
 
-Lists source files for the module.
-
-### Includes
-
-```make
 RECURSE(
     ut
     bench
-    medium_ut
 )
-```
 
-Includes subdirectory ya.make files. Supports directory traversal for build modules.
-
-### Platform Conditionals
-
-```make
 IF(MSVC)
     # Windows-specific configuration
 ELSE()
@@ -119,266 +104,31 @@ ENDIF()
 BUILD_ONLY_IF(OS_LINUX)
 ```
 
-Conditional compilation based on platform or build flags. The same ya.make file may expose different module definitions depending on these conditions.
+`PEERDIR` declares module dependencies. `SRCS` lists source files. `RECURSE` includes subdirectory `ya.make` files. `IF`/`ELSE`/`ENDIF` and `BUILD_ONLY_IF` are evaluated in the active build context.
 
-### Example: tools/archiver
+## Architecture Requirements
 
-```make
-PROGRAM()
+The design must remain compatible with these `GOALS.md` requirements:
 
-PEERDIR(
-    library/cpp/archive
-    library/cpp/digest/md5
-    library/cpp/getopt/small
-)
+- Parallel parsing of includes and `ya.make` files.
+- Direct graph execution from the in-memory representation without JSON serialization in the hot path.
+- Multimodule and context-aware interpretation of `ya.make`, including target, platform, and language inputs.
 
-SRCS(
-    main.cpp
-)
+Avoid over-prescribing implementation details in docs. Preserve room for changing graph data structures while keeping the acceptance contract stable.
 
-SET(IDE_FOLDER "_Builders")
+## Style
 
-END()
-```
+Follow `STYLE.md` and existing repository conventions.
 
-## Graph Output Format
-
-The build system outputs a JSON file with the following structure:
-
-```json
-{
-  "conf": {
-    "cache": true,
-    "platform": "linux",
-    "graph_size": 3730,
-    "gsid": "USER:pg YA:...",
-    ...
-  },
-  "graph": [
-    {
-      "uid": "bQglhGvE_E_M7mmKh1Nuwg",
-      "self_uid": "tgeDq7dc6IWQFubGuYpjuA",
-      "stats_uid": "c76f8ebdc20cd1d452491e62afe5aa78",
-      "cmds": [...],
-      "inputs": [...],
-      "outputs": ["$(BUILD_ROOT)/tools/archiver/archiver"],
-      "deps": [...],
-      "kv": {...},
-      "target_properties": {
-        "module_dir": "tools/archiver",
-        "module_lang": "cpp",
-        "module_type": "bin"
-      },
-      ...
-    },
-    ...
-  ],
-  "inputs": [...],
-  "result": [...]
-}
-```
-
-**Node Keys**:
-- `uid`: Node identifier (auto-generated, differs between runs)
-- `self_uid`: Secondary identifier
-- `cmds`: Array of command arrays (execution instructions)
-- `inputs`: Input file paths (prefixed with `$(SOURCE_ROOT)`)
-- `outputs`: Output file paths (prefixed with `$(BUILD_ROOT)`)
-- `deps`: Dependency UIDs
-- `target_properties`: Module metadata (dir, language, type)
-
-Reference: `/home/pg/monorepo/yatool_orig/sg.json`
-
-## Architecture Decisions
-
-### Multimode Interpreter Design
-
-ya.make semantics depend on input flags:
-- **Target path**: Determines which module to build
-- **Platform flags**: `--musl`, `--target-platform`, etc. change which branches evaluate
-- **Language flags**: Affect proto and other language-specific modules
-
-A single ya.make file may produce different graph nodes depending on these flags. The interpreter must evaluate conditionals at parse time based on the given context.
-
-### Parallel Parsing Strategy
-
-The build system must parse ya.make files concurrently:
-- Include files (RECURSE) can be parsed in parallel
-- Each ya.make file is independent until dependency resolution
-- Use goroutines with shared graph structure (sync.Map or mutex-protected map)
-
-Key insight: parsing is I/O-bound and embarrassingly parallel. Dependency resolution is the serial phase.
-
-### In-Memory Graph Representation
-
-**Goal**: Execute graph directly without JSON serialization.
-
-**Approach**:
-- Maintain graph nodes in Go structs in memory
-- UIDs generated during graph construction
-- Topological sort for execution order
-- Direct invocation of commands via os/exec
-
-This avoids the overhead of round-tripping through JSON between the graph generator and executor (as in the reference system).
-
-## Code Style & Conventions
-
-See `STYLE.md` for complete style guide. Key points:
-
-### Error Handling
-
-Use `throw.go` primitives instead of `if err != nil { return err }`:
+Use `throw.go` helpers for routine error propagation:
 
 ```go
-// BAD
-f, err := os.Open(path)
-if err != nil {
-    return err
-}
-
-// GOOD
-f := Throw2(os.Open(path))
-```
-
-Catches belong at boundaries (main, goroutine entries, filter loops).
-
-### Formatting
-
-- Blank lines before/after `if`, `for`, `switch`, `select` (except first/last statement)
-- Blank line before `return` (except first statement)
-- Logical grouping: consecutive one-liners stay together
-
-### Project Layout
-
-Flat `.go` files in repo root only.
-
-### Dependencies
-
-- **S3**: `github.com/aws/aws-sdk-go-v2/service/s3`
-- **etcd**: `go.etcd.io/etcd/client/v3`
-- **SSH**: Shell out to `ssh` binary via `exec.Command`
-- **Config**: JSON only (no YAML)
-
-## Acceptance Criteria
-
-### Graph Equality (100%)
-
-The generated graph must structurally match the reference graph, ignoring only UID renumbering.
-
-**Validation approach**:
-- Normalize UIDs (replace with sequential integers or hash-based IDs)
-- Compare node counts, edges, command arrays
-- Verify input/output paths match
-- Ensure `target_properties` are identical
-
-### Performance (< 1 second)
-
-Target: `tools/archiver` graph generation in under 1 second on modern hardware.
-
-**Measurement**:
-```bash
-time ya make -G tools/archiver > sg.json
-```
-
-**Optimization opportunities**:
-- Parallel file parsing (goroutines)
-- Avoid intermediate JSON in hot paths
-- Cache parsed ya.make files in memory
-- Use efficient graph structures (slice-based adjacency lists)
-
-### Code Quality
-
-No `go vet` or `golint` errors. Pass `throw.go` style checks.
-
-**Linting**:
-```bash
-go vet ./...
-golint .
-```
-
-### Test Coverage
-
-Cover core DSL constructs:
-- **PEERDIR**: Dependency declaration
-- **SRCS**: Source file lists
-- **RECURSE**: Include mechanism
-- **IF/ELSE/ENDIF**: Platform conditionals
-
-### CI Checklist
-
-Before closing a PR:
-1. Graph equality validation passes on `tools/archiver`
-2. Performance benchmark shows < 1s (document hardware specs)
-3. `go vet` and `golint` pass with zero errors
-4. Unit tests for DSL parsers cover all constructs
-5. Integration test generates bit-identical graph (modulo UIDs)
-
-## Common Patterns
-
-### Throwing Errors
-
-```go
-// File operations
 content := Throw2(os.ReadFile(path))
-
-// HTTP requests
-resp := Throw2(http.Get(url))
-defer resp.Body.Close()
-body := Throw2(io.ReadAll(resp.Body))
-
-// Disk operations
 Throw(os.MkdirAll(dir, 0755))
 ```
 
-### Parallel Parsing with Errgroup
+Catches belong at boundaries such as `main`, goroutine entries, or deliberate filter loops. Keep the flat root source layout.
 
-```go
-g, ctx := errgroup.WithContext(ctx)
+## Validation
 
-for _, file := range files {
-    file := file
-    g.Go(func() error {
-        content := Throw2(os.ReadFile(file))
-        nodes := parseYaMake(content, ctx)
-        graph.AddNodes(nodes)
-        return nil
-    })
-}
-
-Throw(g.Wait())
-```
-
-### Building Command Arrays
-
-Graph nodes use command arrays:
-
-```json
-"cmds": [
-  ["clang++", "-o", "output.o", "-c", "src.cpp", "-I", "include/"]
-]
-```
-
-In Go:
-
-```go
-node.Cmds = [][]string{
-    {"clang++", "-o", "output.o", "-c", "src.cpp", "-I", "include/"},
-}
-```
-
-## Getting Started
-
-1. Read `STYLE.md` and `throw.go` to understand the error handling pattern
-2. Examine `/home/pg/monorepo/yatool_orig/tools/archiver/ya.make`
-3. Generate the reference graph: `cd /home/pg/monorepo/yatool_orig && ./srun.sh`
-4. Study `sg.json` structure (3730 nodes, ~100MB)
-5. Implement a minimal ya.make parser for `PROGRAM()`, `LIBRARY()`, `PEERDIR()`, `SRCS()`, `END()`
-6. Build graph for tools/archiver and validate against reference
-7. Optimize for speed (parallel parsing, memory layout)
-
-## Questions?
-
-- Graph structure: See `sg.json` in reference implementation
-- ya.make syntax: Examples throughout `/home/pg/monorepo/yatool_orig`
-- Reference implementation: `devtools/ymake` (graph generation logic)
-- Code style: Consult `STYLE.md` and existing files
+See `ACCEPTANCE.md` for the validation contract, current executable checks, known implementation gaps, graph equality expectations, and performance measurement rules.
