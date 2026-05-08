@@ -28,8 +28,7 @@ func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
 func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 	absTargetPath := be.resolveTargetPath(targetPath)
 
-	parser := NewParser(be.ctx)
-	file := Throw2(parser.ParseFile(absTargetPath))
+	file := ParseYaMakeFile(absTargetPath)
 
 	targetDir := filepath.Dir(filepath.ToSlash(absTargetPath))
 	be.recurser.ProcessFileImports(file, targetDir, be.sourceRoot)

@@ -95,9 +95,7 @@ func (rp *RecurseProcessor) processDirectoryRecursive(dirPath string, sourceRoot
 }
 
 func (rp *RecurseProcessor) parseAndRegisterFile(yaMakePath string, sourceRoot string) {
-	parser := NewParser(rp.ctx)
-
-	file := Throw2(parser.ParseFile(yaMakePath))
+	file := ParseYaMakeFile(yaMakePath)
 
 	rp.ProcessFileImports(file, filepath.Dir(filepath.ToSlash(yaMakePath)), sourceRoot)
 
