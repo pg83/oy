@@ -123,9 +123,39 @@ type ValidationCommand struct {
 }
 
 type ValidationTargetProperties struct {
-	ModuleDir  string `json:"module_dir"`
-	ModuleLang string `json:"module_lang"`
-	ModuleType string `json:"module_type"`
+	ModuleDir  string                     `json:"module_dir"`
+	ModuleLang string                     `json:"module_lang"`
+	ModuleType string                     `json:"module_type"`
+	ModuleTag  string                     `json:"module_tag"`
+	Fields     map[string]json.RawMessage `json:"-"`
+}
+
+func (tp *ValidationTargetProperties) UnmarshalJSON(data []byte) error {
+	fields := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	tp.Fields = fields
+	var err error
+	if tp.ModuleDir, err = targetPropertyString(fields, "module_dir"); err != nil {
+		return err
+	}
+	if tp.ModuleLang, err = targetPropertyString(fields, "module_lang"); err != nil {
+		return err
+	}
+	if tp.ModuleType, err = targetPropertyString(fields, "module_type"); err != nil {
+		return err
+	}
+	if tp.ModuleTag, err = targetPropertyString(fields, "module_tag"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (tp ValidationTargetProperties) MarshalJSON() ([]byte, error) {
+	return json.Marshal(tp.rawFields())
 }
 
 type ValidationRequirements struct {
@@ -359,9 +389,7 @@ func (c *graphComparison) compareNodes() {
 
 func (c *graphComparison) compareNode(refNode, genNode ValidationNode) {
 	context := nodeContext(refNode, genNode)
-	c.compareString(context+" field=target_properties.module_dir", refNode.TargetProperties.ModuleDir, genNode.TargetProperties.ModuleDir)
-	c.compareString(context+" field=target_properties.module_lang", refNode.TargetProperties.ModuleLang, genNode.TargetProperties.ModuleLang)
-	c.compareString(context+" field=target_properties.module_type", refNode.TargetProperties.ModuleType, genNode.TargetProperties.ModuleType)
+	c.compareTargetProperties(context+" field=target_properties", refNode.TargetProperties, genNode.TargetProperties)
 	c.compareString(context+" field=platform", refNode.Platform, genNode.Platform)
 	c.compareString(context+" field=host_platform", fmt.Sprint(refNode.HostPlatform), fmt.Sprint(genNode.HostPlatform))
 	c.compareRawJSON(context+" field=requirements", canonicalRaw(refNode.Requirements), canonicalRaw(genNode.Requirements))
@@ -374,6 +402,10 @@ func (c *graphComparison) compareNode(refNode, genNode ValidationNode) {
 	c.compareStringMap(context+" field=kv", c.normalizeKV(refNode.KV, c.refCanonical), c.normalizeKV(genNode.KV, c.genCanonical))
 	c.compareCommands(context, refNode.Cmds, genNode.Cmds)
 	c.compareStringSlices(context+" field=deps", c.mappedReferenceDeps(refNode), sortedStringsCopy(genNode.Deps))
+}
+
+func (c *graphComparison) compareTargetProperties(path string, ref, gen ValidationTargetProperties) {
+	c.compareRawJSON(path, canonicalRaw(ref.rawFields()), canonicalRaw(gen.rawFields()))
 }
 
 func (c *graphComparison) compareCommands(context string, refCmds, genCmds []ValidationCommand) {
@@ -656,7 +688,7 @@ type validationNodeIdentity struct {
 
 func nodeIdentity(node ValidationNode, canonical map[string]string) validationNodeIdentity {
 	return validationNodeIdentity{
-		TargetProperties: node.TargetProperties,
+		TargetProperties: node.TargetProperties.normalized(),
 		Platform:         node.Platform,
 		HostPlatform:     node.HostPlatform,
 		Requirements:     node.Requirements,
@@ -704,9 +736,64 @@ func normalizeKVMap(kv map[string]string, canonical map[string]string) map[strin
 	return normalized
 }
 
+func (tp ValidationTargetProperties) rawFields() map[string]json.RawMessage {
+	fields := copyRawMap(tp.Fields)
+
+	delete(fields, "module_dir")
+	delete(fields, "module_lang")
+	delete(fields, "module_type")
+	delete(fields, "module_tag")
+	setTargetPropertyString(fields, "module_dir", tp.ModuleDir)
+	setTargetPropertyString(fields, "module_lang", tp.ModuleLang)
+	setTargetPropertyString(fields, "module_type", tp.ModuleType)
+	setTargetPropertyString(fields, "module_tag", tp.ModuleTag)
+
+	return fields
+}
+
+func (tp ValidationTargetProperties) normalized() ValidationTargetProperties {
+	tp.Fields = tp.rawFields()
+
+	return tp
+}
+
+func copyRawMap(values map[string]json.RawMessage) map[string]json.RawMessage {
+	copyValues := make(map[string]json.RawMessage, len(values))
+
+	for key, value := range values {
+		copyValue := make([]byte, len(value))
+		copy(copyValue, value)
+		copyValues[key] = json.RawMessage(copyValue)
+	}
+
+	return copyValues
+}
+
+func targetPropertyString(fields map[string]json.RawMessage, key string) (string, error) {
+	raw, ok := fields[key]
+	if !ok || len(raw) == 0 || string(raw) == "null" {
+		return "", nil
+	}
+
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", fmt.Errorf("target_properties.%s must be string: %w", key, err)
+	}
+
+	return value, nil
+}
+
+func setTargetPropertyString(fields map[string]json.RawMessage, key, value string) {
+	if value == "" {
+		return
+	}
+
+	fields[key] = json.RawMessage(canonicalJSON(value))
+}
+
 func nodeLooseKey(node ValidationNode) string {
 	return canonicalJSON(map[string]any{
-		"target_properties": node.TargetProperties,
+		"target_properties": node.TargetProperties.normalized(),
 		"platform":          node.Platform,
 		"host_platform":     node.HostPlatform,
 		"inputs":            sortedStringsCopy(node.Inputs),

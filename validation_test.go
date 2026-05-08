@@ -131,6 +131,21 @@ func TestCompareGraphFilesComparesKVEnvRequirementsTagsForeignDepsHostPlatform(t
 	}
 }
 
+func TestCompareGraphFilesComparesAllTargetProperties(t *testing.T) {
+	refNode := syntheticNode("ref", "m", nil, []string{"out"})
+	refNode.TargetProperties.ModuleTag = "tag-a"
+	genNode := syntheticNode("gen", "m", nil, []string{"out"})
+	genNode.TargetProperties.ModuleTag = "tag-b"
+
+	result := CompareGraphs(syntheticGraph([]ValidationNode{refNode}, []string{"ref"}), syntheticGraph([]ValidationNode{genNode}, []string{"gen"}), GraphComparisonOptions{})
+	if result.Err() == nil {
+		t.Fatal("expected target_properties.module_tag mismatch")
+	}
+	if !strings.Contains(result.Err().Error(), "target_properties") || !strings.Contains(result.Err().Error(), "module_tag") {
+		t.Fatalf("expected module_tag context, got %v", result.Err())
+	}
+}
+
 func TestCompareGraphFilesComparesTopLevelInputs(t *testing.T) {
 	ref := syntheticGraph([]ValidationNode{syntheticNode("ref", "m", nil, []string{"out"})}, []string{"ref"})
 	gen := syntheticGraph([]ValidationNode{syntheticNode("gen", "m", nil, []string{"out"})}, []string{"gen"})
