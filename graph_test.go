@@ -446,6 +446,8 @@ func TestGraphJsonSerialization(t *testing.T) {
 	node.Cmds = []Command{
 		{
 			CmdArgs: []string{"clang++", "-o", "output", "src.cpp"},
+			Env:     map[string]string{"CCACHE_DIR": "$(BUILD_ROOT)/.ccache"},
+			Cwd:     "$(BUILD_ROOT)/tools/test",
 		},
 	}
 	node.Env = map[string]string{
@@ -466,6 +468,13 @@ func TestGraphJsonSerialization(t *testing.T) {
 		ModuleDir:  "tools/test",
 		ModuleLang: "cpp",
 		ModuleType: "bin",
+		ModuleTag:  "module-tag",
+		Fields: map[string]json.RawMessage{
+			"custom_target_property": json.RawMessage(`{"enabled":true}`),
+		},
+	}
+	node.Extra = map[string]json.RawMessage{
+		"unknown_node_field": json.RawMessage(`{"preserved":true}`),
 	}
 	node.Platform = "default-linux-x86_64"
 	node.Requirements = Requirements{
@@ -503,6 +512,18 @@ func TestGraphJsonSerialization(t *testing.T) {
 		t.Errorf("Round-trip failed: Platform mismatch")
 	}
 
+	if len(decoded.Cmds) != 1 {
+		t.Fatalf("Round-trip failed: command count mismatch")
+	}
+
+	if decoded.Cmds[0].Env["CCACHE_DIR"] != node.Cmds[0].Env["CCACHE_DIR"] {
+		t.Errorf("Round-trip failed: command env mismatch")
+	}
+
+	if decoded.Cmds[0].Cwd != node.Cmds[0].Cwd {
+		t.Errorf("Round-trip failed: command cwd mismatch")
+	}
+
 	if len(decoded.Env) != len(node.Env) {
 		t.Errorf("Round-trip failed: Env size mismatch")
 	}
@@ -525,5 +546,17 @@ func TestGraphJsonSerialization(t *testing.T) {
 
 	if decoded.HostPlatform != node.HostPlatform {
 		t.Errorf("Round-trip failed: HostPlatform mismatch")
+	}
+
+	if decoded.TargetProperties.ModuleTag != node.TargetProperties.ModuleTag {
+		t.Errorf("Round-trip failed: target_properties.module_tag mismatch")
+	}
+
+	if canonicalRawString(decoded.TargetProperties.Fields["custom_target_property"]) != canonicalRawString(node.TargetProperties.Fields["custom_target_property"]) {
+		t.Errorf("Round-trip failed: target_properties custom field mismatch")
+	}
+
+	if canonicalRawString(decoded.Extra["unknown_node_field"]) != canonicalRawString(node.Extra["unknown_node_field"]) {
+		t.Errorf("Round-trip failed: node extra field mismatch")
 	}
 }

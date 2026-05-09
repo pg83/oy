@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -25,7 +26,9 @@ type Graph struct {
 }
 
 type Command struct {
-	CmdArgs []string `json:"cmd_args"`
+	CmdArgs []string          `json:"cmd_args"`
+	Env     map[string]string `json:"env,omitempty"`
+	Cwd     string            `json:"cwd,omitempty"`
 }
 
 type ReferenceGraph struct {
@@ -45,6 +48,26 @@ type CommandWithEnv struct {
 }
 
 type GraphNode struct {
+	UID              string                     `json:"uid"`
+	SelfUID          string                     `json:"self_uid"`
+	StatsUID         string                     `json:"stats_uid"`
+	Cmds             []Command                  `json:"cmds"`
+	Inputs           []string                   `json:"inputs"`
+	Outputs          []string                   `json:"outputs"`
+	Deps             []string                   `json:"deps"`
+	KV               map[string]string          `json:"kv"`
+	TargetProperties TargetProperties           `json:"target_properties"`
+	Env              map[string]string          `json:"env"`
+	Platform         string                     `json:"platform"`
+	Requirements     Requirements               `json:"requirements"`
+	Sandboxing       bool                       `json:"sandboxing"`
+	Tags             []string                   `json:"tags"`
+	ForeignDeps      ForeignDeps                `json:"foreign_deps"`
+	HostPlatform     bool                       `json:"host_platform"`
+	Extra            map[string]json.RawMessage `json:"-"`
+}
+
+type graphNodeJSON struct {
 	UID              string            `json:"uid"`
 	SelfUID          string            `json:"self_uid"`
 	StatsUID         string            `json:"stats_uid"`
@@ -64,9 +87,165 @@ type GraphNode struct {
 }
 
 type TargetProperties struct {
-	ModuleDir  string `json:"module_dir"`
-	ModuleLang string `json:"module_lang"`
-	ModuleType string `json:"module_type"`
+	ModuleDir  string                     `json:"module_dir"`
+	ModuleLang string                     `json:"module_lang"`
+	ModuleType string                     `json:"module_type"`
+	ModuleTag  string                     `json:"module_tag"`
+	Fields     map[string]json.RawMessage `json:"-"`
+}
+
+func (node GraphNode) MarshalJSON() ([]byte, error) {
+	fields := copyRawMap(node.Extra)
+	knownFields, err := graphNodeKnownFields(node)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, value := range knownFields {
+		fields[key] = value
+	}
+
+	return json.Marshal(fields)
+}
+
+func (node *GraphNode) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	var decoded graphNodeJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	deleteGraphNodeKnownFields(fields)
+	*node = graphNodeFromJSON(decoded)
+	node.Extra = fields
+
+	return nil
+}
+
+func (tp TargetProperties) MarshalJSON() ([]byte, error) {
+	return json.Marshal(tp.rawFields())
+}
+
+func (tp *TargetProperties) UnmarshalJSON(data []byte) error {
+	fields := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	tp.Fields = fields
+	var err error
+	if tp.ModuleDir, err = targetPropertyString(fields, "module_dir"); err != nil {
+		return err
+	}
+	if tp.ModuleLang, err = targetPropertyString(fields, "module_lang"); err != nil {
+		return err
+	}
+	if tp.ModuleType, err = targetPropertyString(fields, "module_type"); err != nil {
+		return err
+	}
+	if tp.ModuleTag, err = targetPropertyString(fields, "module_tag"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (tp TargetProperties) rawFields() map[string]json.RawMessage {
+	fields := copyRawMap(tp.Fields)
+
+	delete(fields, "module_dir")
+	delete(fields, "module_lang")
+	delete(fields, "module_type")
+	delete(fields, "module_tag")
+	setTargetPropertyString(fields, "module_dir", tp.ModuleDir)
+	setTargetPropertyString(fields, "module_lang", tp.ModuleLang)
+	setTargetPropertyString(fields, "module_type", tp.ModuleType)
+	setTargetPropertyString(fields, "module_tag", tp.ModuleTag)
+
+	return fields
+}
+
+func graphNodeKnownFields(node GraphNode) (map[string]json.RawMessage, error) {
+	data, err := json.Marshal(graphNodeToJSON(node))
+	if err != nil {
+		return nil, err
+	}
+
+	fields := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+
+	return fields, nil
+}
+
+func graphNodeToJSON(node GraphNode) graphNodeJSON {
+	return graphNodeJSON{
+		UID:              node.UID,
+		SelfUID:          node.SelfUID,
+		StatsUID:         node.StatsUID,
+		Cmds:             node.Cmds,
+		Inputs:           node.Inputs,
+		Outputs:          node.Outputs,
+		Deps:             node.Deps,
+		KV:               node.KV,
+		TargetProperties: node.TargetProperties,
+		Env:              node.Env,
+		Platform:         node.Platform,
+		Requirements:     node.Requirements,
+		Sandboxing:       node.Sandboxing,
+		Tags:             node.Tags,
+		ForeignDeps:      node.ForeignDeps,
+		HostPlatform:     node.HostPlatform,
+	}
+}
+
+func graphNodeFromJSON(node graphNodeJSON) GraphNode {
+	return GraphNode{
+		UID:              node.UID,
+		SelfUID:          node.SelfUID,
+		StatsUID:         node.StatsUID,
+		Cmds:             node.Cmds,
+		Inputs:           node.Inputs,
+		Outputs:          node.Outputs,
+		Deps:             node.Deps,
+		KV:               node.KV,
+		TargetProperties: node.TargetProperties,
+		Env:              node.Env,
+		Platform:         node.Platform,
+		Requirements:     node.Requirements,
+		Sandboxing:       node.Sandboxing,
+		Tags:             node.Tags,
+		ForeignDeps:      node.ForeignDeps,
+		HostPlatform:     node.HostPlatform,
+	}
+}
+
+func deleteGraphNodeKnownFields(fields map[string]json.RawMessage) {
+	for _, key := range []string{
+		"uid",
+		"self_uid",
+		"stats_uid",
+		"cmds",
+		"inputs",
+		"outputs",
+		"deps",
+		"kv",
+		"target_properties",
+		"env",
+		"platform",
+		"requirements",
+		"sandboxing",
+		"tags",
+		"foreign_deps",
+		"host_platform",
+	} {
+		delete(fields, key)
+	}
 }
 
 type Requirements struct {
