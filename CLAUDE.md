@@ -38,7 +38,16 @@ The Go implementation should encode the required semantics directly rather than 
 
 ## Commands
 
-Executable checks in this repository:
+Local validation:
+
+```bash
+./validate.sh
+./validate.sh --strict
+```
+
+`./validate.sh` is the supported local command for formatting, vet, tests, and the acceptance graph harness. `./validate.sh --strict` makes graph comparison mismatches fatal.
+
+Individual checks run by local validation:
 
 ```bash
 go test ./...

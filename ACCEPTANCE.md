@@ -18,7 +18,22 @@ Acceptance derives from `GOALS.md`. This file records the final validation contr
 
 ## Current Executable Checks
 
-Repository checks:
+Primary local validation command:
+
+```bash
+./validate.sh
+```
+
+`./validate.sh` runs formatting, vet, tests, and the CLI acceptance graph harness. Until execution-node graph generation lands, graph comparison mismatches are allowed in non-strict mode if the generated graph file exists.
+
+Use strict mode when graph equality should be fatal:
+
+```bash
+./validate.sh --strict
+OY_ENFORCE_ARCHIVER_GRAPH_EQUALITY=1 ./validate.sh
+```
+
+The script runs these repository checks in order:
 
 ```bash
 gofmt -d *.go
@@ -26,11 +41,13 @@ go vet ./...
 go test ./...
 ```
 
-Current graph-output command:
+The script then runs this graph-output and comparison command with temporary output:
 
 ```bash
-go run . -G --graph-file=test_sg.json /home/pg/monorepo/yatool_orig/tools/archiver
+go run . -G --graph-file="$tmpdir/sg.json" --validate-against="$OY_REFERENCE_GRAPH" "$OY_ACCEPTANCE_TARGET"
 ```
+
+By default, `OY_REFERENCE_ROOT` is `/home/pg/monorepo/yatool_orig`, `OY_REFERENCE_GRAPH` is `$OY_REFERENCE_ROOT/sg.json`, and `OY_ACCEPTANCE_TARGET` is `$OY_REFERENCE_ROOT/tools/archiver`. If the reference graph is missing, the script attempts to regenerate it with `cd "$OY_REFERENCE_ROOT" && ./srun.sh`.
 
 Current performance test:
 
@@ -104,9 +121,11 @@ Current and expected coverage areas:
 
 ## CI Checklist
 
-- `gofmt -d *.go` has no diff.
-- `go vet ./...` succeeds.
-- `go test ./...` succeeds.
+- `./validate.sh` succeeds for local non-strict validation.
+- `./validate.sh --strict` succeeds as the final strict gate once full graph equality is implemented.
+- The script's `gofmt -d *.go` step has no diff.
+- The script's `go vet ./...` step succeeds.
+- The script's `go test ./...` step succeeds.
 - The reference graph exists or can be regenerated with `cd /home/pg/monorepo/yatool_orig && ./srun.sh`.
 - The generated graph command succeeds for the documented target workflow.
 - The full structural comparator succeeds once implemented and no longer skips the known graph gap.
