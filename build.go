@@ -118,6 +118,27 @@ func (be *BuildEngine) processPeerDependencies(module *Module) {
 	}
 	be.visitedDeps[moduleKey] = true
 
+	if module.Type == ModuleTypeProgram || module.Type == ModuleTypeLibrary {
+		hasUtil := false
+		hasLibcxx := false
+
+		for _, dep := range module.Dependencies {
+			normDep := NormalizedPath(dep)
+			if normDep == "util" {
+				hasUtil = true
+			} else if normDep == "contrib/libs/cxxsupp/libcxx" {
+				hasLibcxx = true
+			}
+		}
+
+		if !hasUtil && moduleKey != "util" {
+			module.Dependencies = append(module.Dependencies, "util")
+		}
+		if !hasLibcxx && moduleKey != "contrib/libs/cxxsupp/libcxx" {
+			module.Dependencies = append(module.Dependencies, "contrib/libs/cxxsupp/libcxx")
+		}
+	}
+
 	for _, depPath := range module.Dependencies {
 		be.loadModuleAndDependencies(depPath)
 	}
@@ -133,7 +154,17 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
 		return
 	}
 
-	file := ParseYaMakeFile(moduleYaMakePath)
+	var file *File
+	defer func() {
+		if r := recover(); r != nil {
+			return
+		}
+	}()
+	file = ParseYaMakeFile(moduleYaMakePath)
+
+	if file == nil {
+		return
+	}
 
 	moduleDir := filepath.Dir(filepath.ToSlash(moduleYaMakePath))
 	relModuleDir := strings.TrimPrefix(moduleDir, be.sourceRoot)

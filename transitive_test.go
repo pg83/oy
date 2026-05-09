@@ -142,16 +142,16 @@ func TestTransitiveCycleDetection(t *testing.T) {
 
 	moduleA := &Module{
 		Type:         ModuleTypeLibrary,
-		SourcePath:   "lib/a",
-		Dependencies: []string{"lib/b"},
+		SourcePath:   "library/a",
+		Dependencies: []string{"library/b"},
 		Sources:      []string{"a.cpp"},
 		Properties:   map[string]string{},
 	}
 
 	moduleB := &Module{
 		Type:         ModuleTypeLibrary,
-		SourcePath:   "lib/b",
-		Dependencies: []string{"lib/a"},
+		SourcePath:   "library/b",
+		Dependencies: []string{"library/a"},
 		Sources:      []string{"b.cpp"},
 		Properties:   map[string]string{},
 	}

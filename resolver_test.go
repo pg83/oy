@@ -116,13 +116,15 @@ func TestResolverMissingDependency(t *testing.T) {
 
 	resolver := NewResolver(registry, ctx)
 
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic for missing dependency")
-		}
-	}()
+	resolved, err := resolver.ResolveDependencies(mainModule)
 
-	resolver.ResolveDependencies(mainModule)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if len(resolved) != 0 {
+		t.Errorf("expected no resolved dependencies, got %d", len(resolved))
+	}
 }
 
 func TestResolverPathNormalization(t *testing.T) {

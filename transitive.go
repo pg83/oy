@@ -49,7 +49,7 @@ func (t *TransitiveResolver) computeTransitiveDepsDFS(module *Module, result map
 
 		depModule := t.registry.Get(normalizedPath)
 		if depModule == nil {
-			ThrowFmt("transitive dependency not found: %s (from module %s)", normalizedPath, module.SourcePath)
+			continue
 		}
 
 		uid := NewUID([]byte(depModule.SourcePath))
