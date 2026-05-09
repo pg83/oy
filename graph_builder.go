@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 )
 
 type GraphBuilder struct {
@@ -28,19 +29,24 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 
 	moduleUIDMap := gb.buildModuleUIDMap(startModule, transitiveDeps)
 
-	for uid := range transitiveDeps {
-		module := moduleUIDMap[uid]
+	modules := gb.getOrderedModuleList(startModule, transitiveDeps, moduleUIDMap)
+
+	for _, module := range modules {
 		if module == nil {
 			continue
 		}
 
-		node := gb.createGraphNode(module, transitiveDeps)
-		graph.AddNode(node)
+		nodes := gb.createExecutionNodes(module, moduleUIDMap)
+		for _, node := range nodes {
+			graph.AddNode(node)
+		}
 	}
 
 	for _, input := range gb.collectInputs(startModule, transitiveDeps) {
 		graph.AddInput(input)
 	}
+
+	graph.ResultUID = NewUID([]byte(startModule.SourcePath))
 
 	return graph
 }
@@ -61,6 +67,18 @@ func (gb *GraphBuilder) buildModuleUIDMap(startModule *Module, transitiveDeps ma
 	return moduleMap
 }
 
+func (gb *GraphBuilder) getOrderedModuleList(startModule *Module, transitiveDeps map[string]struct{}, moduleUIDMap map[string]*Module) []*Module {
+	modules := []*Module{startModule}
+
+	for depUID := range transitiveDeps {
+		if depModule := moduleUIDMap[depUID]; depModule != nil {
+			modules = append(modules, depModule)
+		}
+	}
+
+	return modules
+}
+
 func (gb *GraphBuilder) findModuleByUID(uid string) *Module {
 	allModules := gb.registry.AllModules()
 
@@ -74,7 +92,275 @@ func (gb *GraphBuilder) findModuleByUID(uid string) *Module {
 	return nil
 }
 
-func (gb *GraphBuilder) createGraphNode(module *Module, transitiveDeps map[string]struct{}) *GraphNode {
+func isCSource(src string) bool {
+	return strings.HasSuffix(src, ".c")
+}
+
+func isCXXSource(src string) bool {
+	ext := strings.ToLower(filepath.Ext(src))
+	return ext == ".cc" || ext == ".cpp" || ext == ".cxx" || ext == ".c++"
+}
+
+func isCompilableCSource(src string) bool {
+	return isCSource(src) || isCXXSource(src)
+}
+
+func (gb *GraphBuilder) sourceInput(module *Module, src string) string {
+	return "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, src)
+}
+
+func (gb *GraphBuilder) objectOutput(module *Module, src string) string {
+	return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".o")
+}
+
+func (gb *GraphBuilder) moduleOutput(module *Module) string {
+	baseName := filepath.Base(module.SourcePath)
+
+	switch module.Type {
+	case ModuleTypeProgram:
+		return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, baseName)
+	case ModuleTypeLibrary:
+		return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "lib"+baseName+".a")
+	case ModuleTypeGoLibrary:
+		return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "lib"+baseName+".a")
+	default:
+		return ""
+	}
+}
+
+func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[string]*Module) []*GraphNode {
+	var nodes []*GraphNode
+
+	switch module.Type {
+	case ModuleTypeProgram, ModuleTypeLibrary:
+		compilableSources := gb.filterCompilableSources(module.Sources)
+
+		if len(compilableSources) > 0 {
+			for _, src := range compilableSources {
+				compileNode := gb.createCompileNode(module, src)
+				nodes = append(nodes, compileNode)
+			}
+
+			finalNode := gb.createFinalNode(module, compilableSources, moduleUIDMap)
+			nodes = append(nodes, finalNode)
+		} else {
+			fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
+			if fallbackNode != nil {
+				nodes = append(nodes, fallbackNode)
+			}
+		}
+	case ModuleTypeGoLibrary:
+		fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
+		if fallbackNode != nil {
+			nodes = append(nodes, fallbackNode)
+		}
+	default:
+		fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
+		if fallbackNode != nil {
+			nodes = append(nodes, fallbackNode)
+		}
+	}
+
+	return nodes
+}
+
+func (gb *GraphBuilder) filterCompilableSources(sources []string) []string {
+	var result []string
+	for _, src := range sources {
+		if isCompilableCSource(src) {
+			result = append(result, src)
+		}
+	}
+	return result
+}
+
+func (gb *GraphBuilder) createCompileNode(module *Module, src string) *GraphNode {
+	compileUIDKey := module.SourcePath + ":compile:" + src
+	node := NewGraphNode(*gb.ctx)
+
+	node.UID = NewUID([]byte(compileUIDKey))
+	node.SelfUID = NewUID([]byte(compileUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(compileUIDKey + "_stats"))
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir: module.SourcePath,
+	}
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateCompileCommand(module, src),
+		},
+	}
+
+	node.Inputs = []string{gb.sourceInput(module, src)}
+	node.Outputs = []string{gb.objectOutput(module, src)}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(compileUIDKey + "_kv")),
+		"p":   "CC",
+		"pc":  "green",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateCompileCommand(module *Module, src string) []string {
+	compiler := "clang"
+	if isCXXSource(src) {
+		compiler = "clang++"
+	}
+
+	return []string{
+		compiler,
+		"-c",
+		gb.sourceInput(module, src),
+		"-o",
+		gb.objectOutput(module, src),
+		"-I",
+		"$(SOURCE_ROOT)/" + module.SourcePath,
+	}
+}
+
+func (gb *GraphBuilder) createFinalNode(module *Module, compilableSources []string, moduleUIDMap map[string]*Module) *GraphNode {
+	node := NewGraphNode(*gb.ctx)
+
+	node.UID = NewUID([]byte(module.SourcePath))
+	node.SelfUID = NewUID([]byte(module.SourcePath + "_self"))
+	node.StatsUID = NewUID([]byte(module.SourcePath + "_stats"))
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineModuleLanguage(module),
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	moduleDeps := gb.collectModuleDependencies(module)
+	compileDeps := gb.getCompileDepUIDs(module, compilableSources)
+
+	allDeps := append(compileDeps, moduleDeps...)
+	node.Deps = allDeps
+
+	var inputs []string
+	for _, src := range module.Sources {
+		if !isCompilableCSource(src) {
+			inputs = append(inputs, gb.sourceInput(module, src))
+		}
+	}
+	node.Inputs = inputs
+
+	outputPath := gb.moduleOutput(module)
+	if outputPath != "" {
+		node.Outputs = []string{outputPath}
+	}
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateFinalCommand(module, compilableSources, moduleUIDMap),
+		},
+	}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(module.SourcePath + "_kv")),
+	}
+
+	switch module.Type {
+	case ModuleTypeProgram:
+		node.KV["p"] = "LD"
+		node.KV["pc"] = "light-blue"
+		node.KV["show_out"] = "yes"
+	case ModuleTypeLibrary:
+		node.KV["p"] = "AR"
+		node.KV["pc"] = "light-red"
+		node.KV["show_out"] = "yes"
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) getCompileDepUIDs(module *Module, compilableSources []string) []string {
+	var deps []string
+	for _, src := range compilableSources {
+		compileUIDKey := module.SourcePath + ":compile:" + src
+		compileUID := NewUID([]byte(compileUIDKey))
+		deps = append(deps, compileUID)
+	}
+	return deps
+}
+
+func (gb *GraphBuilder) generateFinalCommand(module *Module, compilableSources []string, moduleUIDMap map[string]*Module) []string {
+	outputPath := gb.moduleOutput(module)
+	if outputPath == "" {
+		return []string{}
+	}
+
+	var args []string
+	var objectOutputs []string
+
+	for _, src := range compilableSources {
+		objectOutputs = append(objectOutputs, gb.objectOutput(module, src))
+	}
+
+	switch module.Type {
+	case ModuleTypeProgram:
+		args = append(args, "clang++", "-o", outputPath)
+		args = append(args, objectOutputs...)
+
+		depOutputs := gb.getDependencyOutputs(module, moduleUIDMap)
+		for _, depOutput := range depOutputs {
+			if depOutput != "" {
+				args = append(args, depOutput)
+			}
+		}
+	case ModuleTypeLibrary:
+		args = append(args, "ar", "rcs", outputPath)
+		args = append(args, objectOutputs...)
+	}
+
+	return args
+}
+
+func (gb *GraphBuilder) getDependencyOutputs(module *Module, moduleUIDMap map[string]*Module) []string {
+	var outputs []string
+
+	for _, depPath := range module.Dependencies {
+		depModule := gb.resolveDependencyModule(depPath, moduleUIDMap)
+		if depModule != nil {
+			outputPath := gb.moduleOutput(depModule)
+			if outputPath != "" {
+				outputs = append(outputs, outputPath)
+			}
+		}
+	}
+
+	return outputs
+}
+
+func (gb *GraphBuilder) resolveDependencyModule(depPath string, moduleUIDMap map[string]*Module) *Module {
+	allModules := gb.registry.AllModules()
+
+	for _, module := range allModules {
+		if gb.normalizeDepPath(depPath) == module.SourcePath {
+			return module
+		}
+	}
+
+	return nil
+}
+
+func (gb *GraphBuilder) normalizeDepPath(depPath string) string {
+	depPath = filepath.Clean(depPath)
+	if strings.HasPrefix(depPath, "./") {
+		depPath = depPath[2:]
+	}
+	return depPath
+}
+
+func (gb *GraphBuilder) createFallbackNode(module *Module, moduleUIDMap map[string]*Module) *GraphNode {
+	if len(module.Sources) == 0 && len(module.Dependencies) == 0 {
+		return nil
+	}
+
 	node := NewGraphNode(*gb.ctx)
 
 	node.UID = NewUID([]byte(module.SourcePath))
@@ -88,17 +374,15 @@ func (gb *GraphBuilder) createGraphNode(module *Module, transitiveDeps map[strin
 	}
 
 	node.Cmds = gb.generateCommands(module)
-
 	node.Inputs = gb.collectModuleInputs(module)
-
 	node.Outputs = gb.collectModuleOutputs(module)
-
 	node.Deps = gb.collectModuleDependencies(module)
 
-	node.KV = module.Properties
-
-	kvString := NewUID([]byte(module.SourcePath + "_kv"))
-	node.KV["uid"] = kvString
+	node.KV = copyStringMap(module.Properties)
+	if node.KV == nil {
+		node.KV = map[string]string{}
+	}
+	node.KV["uid"] = NewUID([]byte(module.SourcePath + "_kv"))
 
 	return node
 }
