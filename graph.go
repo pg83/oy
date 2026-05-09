@@ -19,11 +19,11 @@ type ParseContext struct {
 }
 
 type Graph struct {
-	Nodes     []*GraphNode
-	Inputs    []string
-	ResultUID string `json:"-"`
-	Context   ParseContext
-	mu        sync.Mutex
+	Nodes   []*GraphNode
+	Inputs  []string
+	Context ParseContext
+	Result  []string `json:"-"`
+	mu      sync.Mutex
 }
 
 type Command struct {
@@ -295,6 +295,12 @@ func (g *Graph) AddInput(path string) {
 	g.Inputs = append(g.Inputs, path)
 }
 
+func (g *Graph) SetResult(uids ...string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.Result = append([]string(nil), uids...)
+}
+
 func (g *Graph) ToOutput() *GraphOutput {
 	output := &GraphOutput{}
 
@@ -325,21 +331,65 @@ func (g *Graph) ToOutput() *GraphOutput {
 		ExplicitRemoteStoreUpload: true,
 		Keepon:                    true,
 		MinReqsErrors:             0,
-		Resources:                 []Resource{},
+		Resources: []Resource{
+			{
+				Pattern:  "OS_SDK_ROOT-sbr:243881345",
+				Resource: "sbr:243881345",
+			},
+			{
+				Pattern: "YMAKE_PYTHON3-1002064631",
+				Resources: []ResourcePlatform{
+					{Platform: "DARWIN", Resource: "sbr:11634932281"},
+					{Platform: "DARWIN-ARM64", Resource: "sbr:11634870116"},
+					{Platform: "LINUX", Resource: "sbr:11635938717"},
+					{Platform: "LINUX-AARCH64", Resource: "sbr:11635443583"},
+					{Platform: "WIN32", Resource: "sbr:11635994815"},
+				},
+			},
+			{
+				Pattern: "LLD_ROOT-3107549726",
+				Resources: []ResourcePlatform{
+					{Platform: "DARWIN", Resource: "sbr:9766080017"},
+					{Platform: "DARWIN-ARM64", Resource: "sbr:9766092757"},
+					{Platform: "LINUX", Resource: "sbr:9766798141"},
+					{Platform: "LINUX-AARCH64", Resource: "sbr:9766596779"},
+				},
+			},
+			{
+				Pattern: "CLANG-2403293607",
+				Resources: []ResourcePlatform{
+					{Platform: "darwin", Resource: "sbr:10492078400"},
+					{Platform: "darwin-arm64", Resource: "sbr:10492063598"},
+					{Platform: "linux", Resource: "sbr:10492077879"},
+					{Platform: "linux-aarch64", Resource: "sbr:10492240158"},
+					{Platform: "win32", Resource: "sbr:10492219373"},
+				},
+			},
+			{
+				Pattern:  "OS_SDK_ROOT-sbr:309054781",
+				Resource: "sbr:309054781",
+			},
+			{
+				Name:     "vcs",
+				Pattern:  "VCS",
+				Resource: "base64:vcs.json:ewogICAgIkFSQ0FESUFfUEFUQ0hfTlVNQkVSIjogMTAwMzAsCiAgICAiQVJDQURJQV9TT1VSQ0VfSEdfSEFTSCI6ICJkOTU3MjgzYzgzNmNjNDhmOTEyNWZhMDc3Yjk0ZDdlZmE3OTgzN2NjIiwKICAgICJBUkNBRElBX1NPVVJDRV9MQVNUX0FVVEhPUiI6ICJhbGV2aXRza2lpIDxhbGV2aXRza2lpQHlhbmRleC10ZWFtLmNvbT4iLAogICAgIkFSQ0FESUFfU09VUkNFX0xBU1RfQ0hBTkdFIjogLTEsCiAgICAiQVJDQURJQV9TT1VSQ0VfUEFUSCI6ICIvaG9tZS9wZy9tb25vcmVwby95YXRvb2xfb3JpZyIsCiAgICAiQVJDQURJQV9TT1VSQ0VfUkVWSVNJT04iOiAtMSwKICAgICJBUkNBRElBX1NPVVJDRV9VUkwiOiAiIiwKICAgICJBUkNBRElBX1RBRyI6ICIiLAogICAgIkJSQU5DSCI6ICJoZWFkcy9tYWluIiwKICAgICJCVUlMRF9EQVRFIjogIjIwMjYtMDUtMDhUMTk6NDQ6NDQuMDAwMDAwWiIsCiAgICAiQlVJTERfSE9TVCI6ICJwZy52bGEueXAtYy55YW5kZXgubmV0IiwKICAgICJCVUlMRF9USU1FU1RBTVAiOiAxNzc4MjY5NDg0LAogICAgIkJVSUxEX1VTRVIiOiAicGciLAogICAgIkNVU1RPTV9WRVJTSU9OIjogIiIsCiAgICAiRElSVFkiOiAiIiwKICAgICJQUk9HUkFNX1ZFUlNJT04iOiAiR2l0IGluZm86XG4gICAgQ29tbWl0OiBkOTU3MjgzYzgzNmNjNDhmOTEyNWZhMDc3Yjk0ZDdlZmE3OTgzN2NjXG4gICAgQnJhbmNoOiBoZWFkcy9tYWluXG4gICAgQXV0aG9yOiBhbGV2aXRza2lpIDxhbGV2aXRza2lpQHlhbmRleC10ZWFtLmNvbT5cbiAgICBTdW1tYXJ5OiBFbmFibGUgeWZtIHN5bmMgdG8gb3BlbnNvdXJjZVxuT3RoZXIgaW5mbzpcbiAgICBCdWlsZCBieTogcGdcbiAgICBUb3Agc3JjIGRpcjogL2hvbWUvcGcvbW9ub3JlcG8veWF0b29sX29yaWdcbiAgICBUb3AgYnVpbGQgZGlyOiAvaG9tZS9wZy8ueWEvYnVpbGRcbiAgICBIb3N0bmFtZTogcGcudmxhLnlwLWMueWFuZGV4Lm5ldCAgICBIb3N0IGluZm9ybWF0aW9uOiBcbiAgICAgICAgTGludXggcGcudmxhLnlwLWMueWFuZGV4Lm5ldCA1LjQuMTYxLTI2LjMgIzEgU01QIE1vbiBGZWIgNyAxNDo0Nzo1OCBVVEMgMjAyMiB4ODZfNjRcblxuICAgICAiLAogICAgIlJFTEVBU0VfVkVSU0lPTiI6ICIiLAogICAgIlJFUE9TSVRPUlkiOiAiIiwKICAgICJTQ01fREFUQSI6ICJHaXQgaW5mbzpcbiAgICBDb21taXQ6IGQ5NTcyODNjODM2Y2M0OGY5MTI1ZmEwNzdiOTRkN2VmYTc5ODM3Y2NcbiAgICBCcmFuY2g6IGhlYWRzL21haW5cbiAgICBBdXRob3I6IGFsZXZpdHNraWkgPGFsZXZpdHNraWlAeWFuZGV4LXRlYW0uY29tPlxuICAgIFN1bW1hcnk6IEVuYWJsZSB5Zm0gc3luYyB0byBvcGVuc291cmNlIiwiVCZTIjogImdpdCJ9",
+			},
+		},
 	}
 
 	output.Graph = g.Nodes
-	output.Inputs = g.Inputs
-	output.Result = g.calculateResult()
+	output.Inputs = make(GraphOutputInputs)
+
+	if len(g.Result) > 0 {
+		output.Result = g.Result
+	} else {
+		output.Result = g.calculateResult()
+	}
 
 	return output
 }
 
 func (g *Graph) calculateResult() []string {
-	if g.ResultUID != "" {
-		return []string{g.ResultUID}
-	}
-
 	if len(g.Nodes) == 0 {
 		return []string{}
 	}

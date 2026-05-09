@@ -46,7 +46,7 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 		graph.AddInput(input)
 	}
 
-	graph.ResultUID = NewUID([]byte(startModule.SourcePath))
+	graph.SetResult(NewUID([]byte(startModule.SourcePath)))
 
 	return graph
 }

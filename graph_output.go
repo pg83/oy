@@ -8,10 +8,19 @@ import (
 )
 
 type GraphOutput struct {
-	Conf   *Conf        `json:"conf"`
-	Graph  []*GraphNode `json:"graph"`
-	Inputs []string     `json:"inputs"`
-	Result []string     `json:"result"`
+	Conf   *Conf             `json:"conf"`
+	Graph  []*GraphNode      `json:"graph"`
+	Inputs GraphOutputInputs `json:"inputs"`
+	Result []string          `json:"result"`
+}
+
+type GraphOutputInputs map[string]string
+
+func (g GraphOutputInputs) MarshalJSON() ([]byte, error) {
+	if g == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(map[string]string(g))
 }
 
 type Conf struct {
@@ -40,9 +49,10 @@ type ExecutionCost struct {
 }
 
 type Resource struct {
+	Name      string             `json:"name,omitempty"`
 	Pattern   string             `json:"pattern"`
-	Resource  string             `json:"resource"`
-	Resources []ResourcePlatform `json:"resources"`
+	Resource  string             `json:"resource,omitempty"`
+	Resources []ResourcePlatform `json:"resources,omitempty"`
 }
 
 type ResourcePlatform struct {
