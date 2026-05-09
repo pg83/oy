@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 )
@@ -91,6 +92,50 @@ func TestGraphOutputConfStructure(t *testing.T) {
 
 	if output.Conf.Resources == nil {
 		t.Fatal("expected resources array")
+	}
+
+	if len(output.Conf.Resources) != 6 {
+		t.Errorf("expected 6 resources, got %d", len(output.Conf.Resources))
+	}
+
+	if output.Conf.Resources[0].Pattern != "OS_SDK_ROOT-sbr:243881345" {
+		t.Errorf("expected first resource pattern=OS_SDK_ROOT-sbr:243881345, got %s", output.Conf.Resources[0].Pattern)
+	}
+
+	if output.Conf.Resources[0].Resource != "sbr:243881345" {
+		t.Errorf("expected first resource resource=sbr:243881345, got %s", output.Conf.Resources[0].Resource)
+	}
+
+	vcsIndex := -1
+	for i, res := range output.Conf.Resources {
+		if res.Pattern == "VCS" {
+			vcsIndex = i
+			break
+		}
+	}
+
+	if vcsIndex == -1 {
+		t.Fatal("expected VCS resource")
+	}
+
+	if output.Conf.Resources[vcsIndex].Name != "vcs" {
+		t.Errorf("expected VCS resource name=vcs, got %s", output.Conf.Resources[vcsIndex].Name)
+	}
+
+	pythonIndex := -1
+	for i, res := range output.Conf.Resources {
+		if res.Pattern == "YMAKE_PYTHON3-1002064631" {
+			pythonIndex = i
+			break
+		}
+	}
+
+	if pythonIndex == -1 {
+		t.Fatal("expected YMAKE_PYTHON3 resource")
+	}
+
+	if len(output.Conf.Resources[pythonIndex].Resources) != 5 {
+		t.Errorf("expected 5 platform resources for YMAKE_PYTHON3, got %d", len(output.Conf.Resources[pythonIndex].Resources))
 	}
 }
 
@@ -260,17 +305,90 @@ func TestGraphOutputInputs(t *testing.T) {
 
 	output := graph.ToOutput()
 
-	if len(output.Inputs) != 2 {
-		t.Fatalf("expected 2 inputs, got %d", len(output.Inputs))
+	if len(output.Inputs) != 0 {
+		t.Fatalf("expected 0 top-level inputs (empty object), got %d", len(output.Inputs))
 	}
 
-	if output.Inputs[0] != "/path/to/input1.cpp" {
-		t.Errorf("expected input1=/path/to/input1.cpp, got %s", output.Inputs[0])
+	data, err := json.Marshal(output)
+	if err != nil {
+		t.Fatalf("failed to marshal output: %v", err)
 	}
 
-	if output.Inputs[1] != "/path/to/input2.cpp" {
-		t.Errorf("expected input2=/path/to/input2.cpp, got %s", output.Inputs[1])
+	jsonStr := string(data)
+	if !contains(jsonStr, `"inputs":{}`) {
+		t.Errorf("expected inputs to be empty object {}, got %s", jsonStr)
 	}
+}
+
+func TestGraphOutputResultOverride(t *testing.T) {
+	ctx := ParseContext{Platform: "linux"}
+	graph := NewGraph(ctx)
+
+	node1 := NewGraphNode(ctx)
+	node1.UID = "root-node"
+	node1.TargetProperties = TargetProperties{
+		ModuleDir:  "test/root",
+		ModuleLang: "cpp",
+		ModuleType: "bin",
+	}
+	graph.AddNode(node1)
+
+	node2 := NewGraphNode(ctx)
+	node2.UID = "dep-node"
+	node2.TargetProperties = TargetProperties{
+		ModuleDir:  "test/dep",
+		ModuleLang: "cpp",
+		ModuleType: "lib",
+	}
+	node2.Deps = []string{"root-node"}
+	graph.AddNode(node2)
+
+	graph.SetResult("wanted")
+
+	output := graph.ToOutput()
+
+	if len(output.Result) != 1 {
+		t.Fatalf("expected 1 result node, got %d", len(output.Result))
+	}
+
+	if output.Result[0] != "wanted" {
+		t.Errorf("expected result=wanted, got %s", output.Result[0])
+	}
+}
+
+func TestGraphOutputResourceJSONShape(t *testing.T) {
+	ctx := ParseContext{Platform: "linux"}
+	graph := NewGraph(ctx)
+
+	output := graph.ToOutput()
+
+	data, err := json.Marshal(output)
+	if err != nil {
+		t.Fatalf("failed to marshal output: %v", err)
+	}
+
+	jsonStr := string(data)
+
+	if contains(jsonStr, `"resource":""`) {
+		t.Errorf("should not have empty resource strings in JSON: %s", jsonStr)
+	}
+
+	if contains(jsonStr, `"resources":null`) {
+		t.Errorf("should not have null resources in JSON: %s", jsonStr)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && indexOfSubstring(s, substr))
+}
+
+func indexOfSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGenerateSessionID(t *testing.T) {
