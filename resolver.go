@@ -29,7 +29,7 @@ func (r *Resolver) ResolveDependencies(module *Module) ([]string, error) {
 
 		depModule := r.registry.Get(normalizedPath)
 		if depModule == nil {
-			ThrowFmt("dependency not found: %s (from module %s)", normalizedPath, module.SourcePath)
+			continue
 		}
 
 		uid := r.getModuleUID(depModule)
