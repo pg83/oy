@@ -10,6 +10,7 @@ type ParseFlagsResult struct {
 	PlatformFlag *PlatformFlags
 	OutputJSON   bool
 	JSONPath     string
+	ValidatePath string
 }
 
 func ParseFlags(args []string) (*ParseFlagsResult, error) {
@@ -82,6 +83,15 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 			}
 			continue
 		}
+
+		if strings.HasPrefix(arg, "--validate-against=") {
+			parts := strings.SplitN(arg, "=", 2)
+			if len(parts) == 2 {
+				result.OutputJSON = true
+				result.ValidatePath = parts[1]
+			}
+			continue
+		}
 	}
 
 	return &ParseFlagsResult{
@@ -89,6 +99,7 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 		PlatformFlag: platformFlags,
 		OutputJSON:   result.OutputJSON,
 		JSONPath:     result.JSONPath,
+		ValidatePath: result.ValidatePath,
 	}, nil
 }
 

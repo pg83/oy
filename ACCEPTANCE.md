@@ -38,6 +38,8 @@ Current performance test:
 go test -run TestGraphGenerationPerformance
 ```
 
+This test uses the in-process `MeasureGraphGeneration` harness, calls `BuildDependencyGraph` directly, and reports the median generator wall time over at least 3 measured runs without `go run` compile overhead.
+
 Reference graph regeneration:
 
 ```bash
@@ -89,7 +91,7 @@ Measure median wall time from 3 warm runs:
 
 Record the CPU model, core count, RAM, storage if relevant, OS/kernel, `go version`, and commit hash with performance results.
 
-This command uses `go run`, so it includes compile overhead. If a future ticket adds or documents a built-binary workflow, update this contract to time the built binary for stricter generator-only measurement.
+This manual command uses `go run`, so it includes compile overhead. The automated performance harness measures in-process generator time via `BuildDependencyGraph` and reports median duration with hardware/runtime metadata.
 
 ## Test Coverage
 

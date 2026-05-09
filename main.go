@@ -43,6 +43,16 @@ func main() {
 			fmt.Printf("Writing graph to %s...\n", outputPath)
 			WriteGraphToFile(graph, outputPath)
 			fmt.Printf("Graph written successfully\n")
+
+			if result.ValidatePath != "" {
+				comparison := CompareGraphFiles(result.ValidatePath, outputPath, GraphComparisonOptions{})
+				if err := comparison.Err(); err != nil {
+					Throw(err)
+				}
+
+				fmt.Printf("Graph validation passed against %s\n", result.ValidatePath)
+			}
+
 			os.Exit(0)
 		}
 
