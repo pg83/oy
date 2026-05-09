@@ -19,10 +19,11 @@ type ParseContext struct {
 }
 
 type Graph struct {
-	Nodes   []*GraphNode
-	Inputs  []string
-	Context ParseContext
-	mu      sync.Mutex
+	Nodes     []*GraphNode
+	Inputs    []string
+	ResultUID string `json:"-"`
+	Context   ParseContext
+	mu        sync.Mutex
 }
 
 type Command struct {
@@ -335,6 +336,10 @@ func (g *Graph) ToOutput() *GraphOutput {
 }
 
 func (g *Graph) calculateResult() []string {
+	if g.ResultUID != "" {
+		return []string{g.ResultUID}
+	}
+
 	if len(g.Nodes) == 0 {
 		return []string{}
 	}
