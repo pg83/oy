@@ -174,6 +174,13 @@ func (gb *GraphBuilder) filterCompilableSources(sources []string) []string {
 	return result
 }
 
+// Reference CC node pattern from sg.json:
+// - KV.p = "CC", KV.pc = "green"
+// - 1 command: clang/clang++ with --target, --march, --sysroot flags
+// - Output: $(BUILD_ROOT)/<module>/<source>.c.o or <source>.cpp.o
+// - Input array includes all transitive header dependencies
+// - Environment: ARCADIA_ROOT_DISTBUILD, CPATH, DYLD_LIBRARY_PATH, LIBRARY_PATH, SDKROOT
+// See REFERENCE_NODE_CATALOG.md for full specification
 func (gb *GraphBuilder) createCompileNode(module *Module, src string) *GraphNode {
 	compileUIDKey := module.SourcePath + ":compile:" + src
 	node := NewGraphNode(*gb.ctx)
@@ -264,6 +271,14 @@ func (gb *GraphBuilder) createFinalNode(module *Module, compilableSources []stri
 		"uid": NewUID([]byte(module.SourcePath + "_kv")),
 	}
 
+	// Reference AR archive node pattern from sg.json:
+	// - KV.p = "AR", KV.pc = "light-red", KV.show_out = "yes"
+	// - 1 command: python3 link_lib.py with llvm-ar invocation
+	// - Output: $(BUILD_ROOT)/<module>/lib<module>.a
+	// - Inputs: All .o files from compilation + generated sources
+	// - Deps: All compile node UIDs for the module
+	// - Environment: ARCADIA_ROOT_DISTBUILD, CPATH, DYLD_LIBRARY_PATH, LIBRARY_PATH, SDKROOT
+	// See REFERENCE_NODE_CATALOG.md for full specification
 	switch module.Type {
 	case ModuleTypeProgram:
 		node.KV["p"] = "LD"
@@ -301,6 +316,15 @@ func (gb *GraphBuilder) generateFinalCommand(module *Module, compilableSources [
 		objectOutputs = append(objectOutputs, gb.objectOutput(module, src))
 	}
 
+	// Reference LD link node pattern from sg.json:
+	// - KV.p = "LD", KV.pc = "light-blue", KV.show_out = "yes"
+	// - 4 commands in sequence:
+	//   1. python3 vcs_info.py (generate version.c)
+	//   2. clang (compile version.c to .o)
+	//   3. python3 link_exe.py (link executable)
+	//   4. python3 fs_tools.py (copy/install)
+	// - Cmds should be implemented to match reference structure
+	// See REFERENCE_NODE_CATALOG.md for full specification
 	switch module.Type {
 	case ModuleTypeProgram:
 		args = append(args, "clang++", "-o", outputPath)
