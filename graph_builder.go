@@ -210,6 +210,11 @@ func (gb *GraphBuilder) moduleOutput(module *Module) string {
 func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[string]*Module) []*GraphNode {
 	var nodes []*GraphNode
 
+	for _, jsd := range module.JoinSrcsDirectives {
+		jsNode := gb.createJoinSrcsNode(module, jsd)
+		nodes = append(nodes, jsNode)
+	}
+
 	platformContexts := NewPlatformContexts(gb.ctx)
 
 	for _, platformCtx := range platformContexts {
@@ -248,8 +253,6 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	var objectOutputs []string
 
 	for _, jsd := range module.JoinSrcsDirectives {
-		jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
-		nodes = append(nodes, jsNode)
 		objOutput := gb.platformObjectOutput(module, jsd.OutputFile, platformCtx.arch)
 		objectOutputs = append(objectOutputs, objOutput)
 	}
@@ -560,16 +563,15 @@ func (gb *GraphBuilder) generateJSCommand(
 func (gb *GraphBuilder) createJoinSrcsNode(
 	module *Module,
 	jsd *JoinSrcsDirective,
-	platformCtx PlatformAwareContext,
 ) *GraphNode {
-	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, platformCtx.arch, jsd.OutputFile)
+	jsUIDKey := fmt.Sprintf("%s:JS:both:%s", module.SourcePath, jsd.OutputFile)
 
-	node := NewGraphNode(*platformCtx.ctx)
+	node := NewGraphNode(*gb.ctx)
 
 	node.UID = NewUID([]byte(jsUIDKey))
 	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
 	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
-	node.Platform = string(platformCtx.arch)
+	node.Platform = "both"
 
 	node.TargetProperties = TargetProperties{
 		ModuleDir:  module.SourcePath,
