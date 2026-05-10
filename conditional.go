@@ -46,6 +46,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 		Properties:          make(map[string]string),
 		ConditionalPeerdirs: append([]*ConditionalPeerdir{}, module.ConditionalPeerdirs...),
 		IncludeDirectives:   append([]*IncludeDirective{}, module.IncludeDirectives...),
+		JoinSrcsDirectives:  append([]*JoinSrcsDirective{}, module.JoinSrcsDirectives...),
 	}
 
 	for k, v := range module.Properties {
