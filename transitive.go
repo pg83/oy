@@ -67,10 +67,16 @@ func (t *TransitiveResolver) normalizeDepPath(modulePath, depPath string) string
 		return NormalizedPath(depPath)
 	}
 
+	// Top-level modules like 'util' should not be treated as relative paths
+	if depPath == "util" {
+		return "util"
+	}
+
 	if !strings.HasPrefix(depPath, "library/") &&
 		!strings.HasPrefix(depPath, "contrib/") &&
 		!strings.HasPrefix(depPath, "yt/") &&
-		!strings.HasPrefix(depPath, "arcadia/") {
+		!strings.HasPrefix(depPath, "arcadia/") &&
+		!strings.HasPrefix(depPath, "util/") {
 		relDir := filepath.Dir(modulePath)
 		absPath := filepath.Join(relDir, depPath)
 		return NormalizedPath(absPath)
