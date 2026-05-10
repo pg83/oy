@@ -102,7 +102,7 @@ func TestEvalVarLogging(t *testing.T) {
 				vars.SetValue(k, v)
 			}
 
-			logger := NewTraversalLogger(true, true)
+			logger := NewTraversalLogger(true, true, false)
 			SetGlobalTraversalLogger(logger)
 
 			ast := ParseConditionExpression(tt.expr)
@@ -129,7 +129,7 @@ func TestEvalVarTraceStructure(t *testing.T) {
 	vars.SetValue("PREBUILT", "no")
 	vars.SetValue("MUSL", "yes")
 
-	logger := NewTraversalLogger(true, true)
+	logger := NewTraversalLogger(true, true, false)
 	SetGlobalTraversalLogger(logger)
 
 	module := &Module{
@@ -173,7 +173,7 @@ func TestEvalVarOutput(t *testing.T) {
 	vars.SetValue("OS_LINUX", "true")
 	vars.SetValue("PREBUILT", "no")
 
-	logger := NewTraversalLogger(true, true)
+	logger := NewTraversalLogger(true, true, false)
 	SetGlobalTraversalLogger(logger)
 
 	ast1 := ParseConditionExpression("OS_LINUX")
@@ -242,7 +242,7 @@ func TestPrebuiltVariableTracing(t *testing.T) {
 				vars.SetValue("PREBUILT", tt.prebuilt)
 			}
 
-			logger := NewTraversalLogger(true, true)
+			logger := NewTraversalLogger(true, true, false)
 			SetGlobalTraversalLogger(logger)
 
 			ast := ParseConditionExpression("PREBUILT")
@@ -288,7 +288,7 @@ func TestMuslVariableTracing(t *testing.T) {
 			vars := NewMemoryVariableSet()
 			vars.SetValue("MUSL", tt.musl)
 
-			logger := NewTraversalLogger(true, true)
+			logger := NewTraversalLogger(true, true, false)
 			SetGlobalTraversalLogger(logger)
 
 			ast := ParseConditionExpression("MUSL")
