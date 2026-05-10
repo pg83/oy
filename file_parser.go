@@ -9,6 +9,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const MaxIncludeDepth = 10
+
 type FileParser struct {
 	registry     *ModuleRegistry
 	graph        *Graph
@@ -16,6 +18,7 @@ type FileParser struct {
 	vars         VariableSet
 	visited      map[string]bool
 	visitedMutex sync.Mutex
+	includeDepth int
 }
 
 func NewFileParser(registry *ModuleRegistry, graph *Graph, buildCtx *BuildContext, vars VariableSet) *FileParser {
@@ -74,6 +77,10 @@ func (fp *FileParser) processModule(module *Module, moduleDir string, g *errgrou
 
 	if !EvaluateBuildCondition(resolvedModule, fp.buildCtx, fp.vars) {
 		return
+	}
+
+	for _, include := range resolvedModule.IncludeDirectives {
+		fp.processInclude(include, resolvedModule, moduleDir)
 	}
 
 	modulePath := filepath.Join(moduleDir, "")
@@ -154,4 +161,38 @@ func (fp *FileParser) handleRecurse(dir *RecurseDirective, basePath string, g *e
 			return nil
 		})
 	}
+}
+
+func (fp *FileParser) processInclude(include *IncludeDirective, module *Module, baseDir string) {
+	if fp.includeDepth >= MaxIncludeDepth {
+		ThrowFmt("include depth exceeded maximum of %d at %s", MaxIncludeDepth, include.Location.File)
+	}
+
+	resolvedPath := fp.resolveIncludePath(include.FilePath, baseDir)
+	content := Throw2(os.ReadFile(resolvedPath))
+
+	fp.includeDepth++
+	defer func() { fp.includeDepth-- }()
+
+	includeFile := ParseYaMakeString(string(content), resolvedPath)
+
+	if len(includeFile.Modules) > 0 {
+		for _, inclModule := range includeFile.Modules {
+			resolvedInclModule := ResolveConditionals(inclModule, fp.buildCtx, fp.vars)
+			ResolveWhenBlocks(resolvedInclModule, fp.buildCtx, fp.vars)
+
+			if !EvaluateBuildCondition(resolvedInclModule, fp.buildCtx, fp.vars) {
+				continue
+			}
+
+			MergeModule(module, resolvedInclModule)
+		}
+	}
+}
+
+func (fp *FileParser) resolveIncludePath(includePath, containingDir string) string {
+	if filepath.IsAbs(includePath) {
+		return includePath
+	}
+	return filepath.Join(containingDir, includePath)
 }

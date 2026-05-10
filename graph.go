@@ -12,6 +12,7 @@ import (
 
 type ParseContext struct {
 	Platform   string
+	ArchString string
 	TargetPath string
 	Language   string
 	Musl       bool

@@ -230,6 +230,11 @@ func (p *Parser) parseModule(moduleType ModuleType, sourcePath string) *Module {
 			continue
 		}
 
+		if tok.Value == "INCLUDE" {
+			p.parseIncludeDirective(module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -333,6 +338,11 @@ func (p *Parser) parseConditional(module *Module) {
 			continue
 		}
 
+		if tok.Value == "INCLUDE" {
+			p.parseIncludeDirective(ifBranch.Module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -403,6 +413,11 @@ func (p *Parser) parseConditional(module *Module) {
 				continue
 			}
 
+			if tok.Value == "INCLUDE" {
+				p.parseIncludeDirective(elseIfBranch.Module)
+				continue
+			}
+
 			p.advance()
 		}
 
@@ -461,6 +476,11 @@ func (p *Parser) parseConditional(module *Module) {
 
 			if tok.Value == "IF" {
 				p.parseConditional(elseBranch.Module)
+				continue
+			}
+
+			if tok.Value == "INCLUDE" {
+				p.parseIncludeDirective(elseBranch.Module)
 				continue
 			}
 
@@ -527,8 +547,96 @@ func ParseYaMakeFile(path string) *File {
 	content := Throw2(os.ReadFile(path))
 
 	parser := NewParser(string(content), path)
+	return parser.Parse()
+}
 
-	sourcePath := filepath.Dir(path)
+func ParseYaMakeString(content, filePath string) *File {
+	parser := NewParser(content, filePath)
+	return parser.Parse()
+}
+
+func ParseModuleFragment(content, filePath string) *Module {
+	parser := NewParser(content, filePath)
+	return parser.ParseModuleFragment()
+}
+
+func (p *Parser) ParseModuleFragment() *Module {
+	sourcePath := filepath.Dir(p.filePath)
+
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: sourcePath,
+		Properties: make(map[string]string),
+	}
+
+	for {
+		tok := p.peek()
+		if tok.Type == TokenEOF {
+			break
+		}
+
+		if tok.Value == "IF" {
+			p.parseConditional(module)
+			continue
+		}
+
+		if tok.Value == "PEERDIR" {
+			tok = p.advance()
+			deps := p.parseParenthesizedValues()
+			for _, dep := range deps {
+				dep = strings.TrimSpace(dep)
+				if dep != "" {
+					module.AddDependency(dep)
+				}
+			}
+			continue
+		}
+
+		if strings.HasPrefix(tok.Value, "SRCS") {
+			tok = p.advance()
+			sources := p.parseParenthesizedValues()
+			for _, src := range sources {
+				src = strings.TrimSpace(src)
+				if src != "" {
+					module.AddSource(src)
+				}
+			}
+			continue
+		}
+
+		if tok.Value == "SET" {
+			p.parseSet(module)
+			continue
+		}
+
+		if tok.Value == "RECURSE" || tok.Value == "RECURSE_FOR_TESTS" {
+			p.parseRecurse(module)
+			continue
+		}
+
+		if tok.Value == "ENABLE" {
+			p.parseEnable(module)
+			continue
+		}
+
+		if tok.Value == "DISABLE" {
+			p.parseDisable(module)
+			continue
+		}
+
+		if tok.Value == "INCLUDE" {
+			p.parseIncludeDirective(module)
+			continue
+		}
+
+		p.advance()
+	}
+
+	return module
+}
+
+func (p *Parser) Parse() *File {
+	sourcePath := filepath.Dir(p.filePath)
 
 	file := &File{
 		Modules: []*Module{},
@@ -536,30 +644,30 @@ func ParseYaMakeFile(path string) *File {
 	}
 
 	for {
-		tok := parser.peek()
+		tok := p.peek()
 		if tok.Type == TokenEOF {
 			break
 		}
 
-		moduleType := parser.parseModuleType()
+		moduleType := p.parseModuleType()
 
 		if moduleType != ModuleTypeUnknown {
-			module := parser.parseModule(moduleType, sourcePath)
+			module := p.parseModule(moduleType, sourcePath)
 			file.Modules = append(file.Modules, module)
 			continue
 		}
 
 		if tok.Value == "RECURSE" || tok.Value == "RECURSE_FOR_TESTS" {
-			tok := parser.peek()
+			tok := p.peek()
 			loc := SourceLocation{
-				File:   parser.filePath,
+				File:   p.filePath,
 				Line:   tok.Line,
 				Column: tok.Col,
 			}
 
 			if tok.Value == "RECURSE" || tok.Value == "RECURSE_FOR_TESTS" {
-				parser.advance()
-				paths := parser.parseParenthesizedValues()
+				p.advance()
+				paths := p.parseParenthesizedValues()
 				file.Imports = append(file.Imports, &RecurseDirective{
 					Paths:    paths,
 					Location: loc,
@@ -568,7 +676,7 @@ func ParseYaMakeFile(path string) *File {
 			continue
 		}
 
-		parser.advance()
+		p.advance()
 	}
 
 	return file
@@ -628,4 +736,19 @@ func (p *Parser) parseWhenBlock() *WhenBlock {
 	return &WhenBlock{
 		Condition: condition,
 	}
+}
+
+func (p *Parser) parseIncludeDirective(module *Module) {
+	loc := p.sourceLocation()
+	p.expectIdent("INCLUDE")
+
+	values := p.parseParenthesizedValues()
+	if len(values) != 1 {
+		ThrowFmt("%s:%d:%d: INCLUDE expects exactly one path", p.filePath, loc.Line, loc.Column)
+	}
+
+	module.AddIncludeDirective(&IncludeDirective{
+		FilePath: values[0],
+		Location: loc,
+	})
 }

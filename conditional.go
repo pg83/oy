@@ -45,6 +45,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 		Recursions:          append([]*RecurseDirective{}, module.Recursions...),
 		Properties:          make(map[string]string),
 		ConditionalPeerdirs: append([]*ConditionalPeerdir{}, module.ConditionalPeerdirs...),
+		IncludeDirectives:   append([]*IncludeDirective{}, module.IncludeDirectives...),
 	}
 
 	for k, v := range module.Properties {
