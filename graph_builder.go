@@ -11,6 +11,7 @@ type GraphBuilder struct {
 	registry   *ModuleRegistry
 	ctx        *ParseContext
 	sourceRoot string
+	config     *BuildConfig
 }
 
 func NewGraphBuilder(registry *ModuleRegistry, ctx *ParseContext) *GraphBuilder {
@@ -18,6 +19,7 @@ func NewGraphBuilder(registry *ModuleRegistry, ctx *ParseContext) *GraphBuilder 
 		registry:   registry,
 		ctx:        ctx,
 		sourceRoot: "",
+		config:     NewBuildConfig(ctx),
 	}
 }
 
@@ -26,6 +28,7 @@ func NewGraphBuilderWithSourceRoot(registry *ModuleRegistry, ctx *ParseContext, 
 		registry:   registry,
 		ctx:        ctx,
 		sourceRoot: sourceRoot,
+		config:     NewBuildConfig(ctx),
 	}
 }
 
@@ -66,6 +69,8 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 		if module == nil {
 			continue
 		}
+
+		gb.injectAllocatorDependencies(module)
 
 		nodes := gb.createExecutionNodes(module, moduleUIDMap)
 		for _, node := range nodes {
@@ -1559,4 +1564,33 @@ func (gb *GraphBuilder) collectInputs(startModule *Module, transitiveDeps map[st
 	}
 
 	return allInputs
+}
+
+func (gb *GraphBuilder) injectAllocatorDependencies(module *Module) {
+	if module == nil || module.Type != ModuleTypeProgram {
+		return
+	}
+
+	allocType := gb.config.ParseAllocatorFromModule(module)
+
+	if allocType == "FAKE" {
+		return
+	}
+
+	peerdirs := gb.config.resolveAllocatorPEERDIRs(allocType)
+
+	if len(peerdirs) == 0 {
+		return
+	}
+
+	existing := make(map[string]bool)
+	for _, dep := range module.Dependencies {
+		existing[dep] = true
+	}
+
+	for _, peerdir := range peerdirs {
+		if !existing[peerdir] {
+			module.Dependencies = append(module.Dependencies, peerdir)
+		}
+	}
 }
