@@ -425,3 +425,44 @@ END()
 		t.Errorf("expected condition '$A == val && $B == val2', got '%s'", cp.WhenClause.Condition)
 	}
 }
+
+func TestParseJoinSrcs(t *testing.T) {
+	content := `LIBRARY()
+JOIN_SRCS(
+    all_charset.cpp
+    generated/unidata.cpp
+    recode_result.cpp
+)
+END()
+`
+
+	file := ParseYaMakeString(content, "test/ya.make")
+	t.Logf("Number of modules parsed: %d", len(file.Modules))
+	if len(file.Modules) != 1 {
+		t.Fatalf("Expected 1 module, got %d", len(file.Modules))
+	}
+
+	module := file.Modules[0]
+	t.Logf("Module type: %v", module.Type)
+	t.Logf("Number of JOIN_SRCS directives: %d", len(module.JoinSrcsDirectives))
+
+	if len(module.JoinSrcsDirectives) != 1 {
+		t.Fatalf("Expected 1 JOIN_SRCS directive, got %d", len(module.JoinSrcsDirectives))
+	}
+
+	jsd := module.JoinSrcsDirectives[0]
+	if jsd.OutputFile != "all_charset.cpp" {
+		t.Errorf("Expected output 'all_charset.cpp', got '%s'", jsd.OutputFile)
+	}
+
+	expectedInputs := []string{"generated/unidata.cpp", "recode_result.cpp"}
+	if len(jsd.InputFiles) != len(expectedInputs) {
+		t.Fatalf("Expected %d input files, got %d", len(expectedInputs), len(jsd.InputFiles))
+	}
+
+	for i, input := range jsd.InputFiles {
+		if input != expectedInputs[i] {
+			t.Errorf("Input %d: expected '%s', got '%s'", i, expectedInputs[i], input)
+		}
+	}
+}

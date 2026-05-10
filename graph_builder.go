@@ -175,6 +175,15 @@ func isJSOutputSource(src string) bool {
 	return jsOutputs[strings.TrimSuffix(src, filepath.Ext(src))]
 }
 
+func (gb *GraphBuilder) isJoinSrcsOutput(module *Module, src string) bool {
+	for _, jsd := range module.JoinSrcsDirectives {
+		if jsd.OutputFile == src {
+			return true
+		}
+	}
+	return false
+}
+
 func (gb *GraphBuilder) sourceInput(module *Module, src string) string {
 	return "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, src)
 }
@@ -238,6 +247,13 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	var nodes []*GraphNode
 	var objectOutputs []string
 
+	for _, jsd := range module.JoinSrcsDirectives {
+		jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
+		nodes = append(nodes, jsNode)
+		objOutput := gb.platformObjectOutput(module, jsd.OutputFile, platformCtx.arch)
+		objectOutputs = append(objectOutputs, objOutput)
+	}
+
 	for _, src := range module.Sources {
 		nodeType := gb.determineCompileNodeType(module, src)
 
@@ -273,6 +289,9 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 }
 
 func (gb *GraphBuilder) determineCompileNodeType(module *Module, src string) string {
+	if gb.isJoinSrcsOutput(module, src) {
+		return "JS"
+	}
 	if isRagel6Source(src) {
 		return "R6"
 	}
@@ -533,6 +552,73 @@ func (gb *GraphBuilder) generateJSCommand(
 		if strings.HasSuffix(s, ".cpp") && s != src {
 			args = append(args, filepath.Join(module.SourcePath, s))
 		}
+	}
+
+	return args
+}
+
+func (gb *GraphBuilder) createJoinSrcsNode(
+	module *Module,
+	jsd *JoinSrcsDirective,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, platformCtx.arch, jsd.OutputFile)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(jsUIDKey))
+	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineCCSourceLanguage(jsd.OutputFile),
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, jsd.OutputFile)
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateJoinSrcsCommand(module, jsd),
+			Env:     map[string]string{},
+		},
+	}
+
+	var allInputs []string
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/process_command_files.py")
+	for _, inputFile := range jsd.InputFiles {
+		allInputs = append(allInputs, "$(SOURCE_ROOT)/"+filepath.Join(module.SourcePath, inputFile))
+	}
+	node.Inputs = allInputs
+	node.Outputs = []string{outputPath}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(jsUIDKey + "_kv")),
+		"p":   "JS",
+		"pc":  "magenta",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateJoinSrcsCommand(
+	module *Module,
+	jsd *JoinSrcsDirective,
+) []string {
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, jsd.OutputFile)
+
+	args := []string{
+		"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+		"$(SOURCE_ROOT)/build/scripts/gen_join_srcs.py",
+		outputPath,
+		"--ya-start-command-file",
+	}
+
+	for _, inputFile := range jsd.InputFiles {
+		args = append(args, filepath.Join(module.SourcePath, inputFile))
 	}
 
 	return args

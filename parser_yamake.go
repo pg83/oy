@@ -235,6 +235,11 @@ func (p *Parser) parseModule(moduleType ModuleType, sourcePath string) *Module {
 			continue
 		}
 
+		if tok.Value == "JOIN_SRCS" {
+			p.parseJoinSrcs(module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -266,6 +271,26 @@ func (p *Parser) parseSet(module *Module) {
 	p.expect(TokenRParen)
 
 	module.AddProperty(key, value)
+}
+
+func (p *Parser) parseJoinSrcs(module *Module) {
+	p.expectIdent("JOIN_SRCS")
+	values := p.parseParenthesizedValues()
+
+	if len(values) < 1 {
+		ThrowFmt("%s:%d:%d: JOIN_SRCS requires at least an output file", p.filePath, p.peek().Line, p.peek().Col)
+	}
+
+	loc := p.sourceLocation()
+	outputFile := values[0]
+	inputFiles := values[1:]
+
+	jsd := &JoinSrcsDirective{
+		OutputFile: outputFile,
+		InputFiles: inputFiles,
+		Location:   loc,
+	}
+	module.AddJoinSrcsDirective(jsd)
 }
 
 func (p *Parser) parseConditional(module *Module) {
@@ -340,6 +365,11 @@ func (p *Parser) parseConditional(module *Module) {
 
 		if tok.Value == "INCLUDE" {
 			p.parseIncludeDirective(ifBranch.Module)
+			continue
+		}
+
+		if tok.Value == "JOIN_SRCS" {
+			p.parseJoinSrcs(ifBranch.Module)
 			continue
 		}
 
@@ -418,6 +448,11 @@ func (p *Parser) parseConditional(module *Module) {
 				continue
 			}
 
+			if tok.Value == "JOIN_SRCS" {
+				p.parseJoinSrcs(elseIfBranch.Module)
+				continue
+			}
+
 			p.advance()
 		}
 
@@ -481,6 +516,11 @@ func (p *Parser) parseConditional(module *Module) {
 
 			if tok.Value == "INCLUDE" {
 				p.parseIncludeDirective(elseBranch.Module)
+				continue
+			}
+
+			if tok.Value == "JOIN_SRCS" {
+				p.parseJoinSrcs(elseBranch.Module)
 				continue
 			}
 

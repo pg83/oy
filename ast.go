@@ -66,6 +66,7 @@ type Module struct {
 	DisabledFlags       []string
 	ConditionalPeerdirs []*ConditionalPeerdir
 	IncludeDirectives   []*IncludeDirective
+	JoinSrcsDirectives  []*JoinSrcsDirective
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
@@ -93,6 +94,13 @@ type Property struct {
 type SourceFileList struct {
 	Files    []string
 	Language string
+}
+
+// JoinSrcsDirective represents a JOIN_SRCS() directive that joins multiple source files.
+type JoinSrcsDirective struct {
+	OutputFile string
+	InputFiles []string
+	Location   SourceLocation
 }
 
 // BuildCondition represents a BUILD_ONLY_IF directive that conditions module existence.
@@ -264,4 +272,17 @@ func (m *Module) AddIncludeDirective(include *IncludeDirective) {
 	}
 
 	m.IncludeDirectives = append(m.IncludeDirectives, include)
+}
+
+// AddJoinSrcsDirective adds a JOIN_SRCS directive to the module.
+func (m *Module) AddJoinSrcsDirective(jsd *JoinSrcsDirective) {
+	if m == nil {
+		return
+	}
+
+	if m.JoinSrcsDirectives == nil {
+		m.JoinSrcsDirectives = make([]*JoinSrcsDirective, 0, 1)
+	}
+
+	m.JoinSrcsDirectives = append(m.JoinSrcsDirectives, jsd)
 }
