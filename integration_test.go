@@ -16,9 +16,12 @@ const (
 )
 
 func TestFullGraphGenerationToolsArchiver(t *testing.T) {
+	// Important: Reference graph (sg.json) was generated with musl enabled
+	// Command used: ya make -k --musl --host-platform-flag=MUSL=yes ... tools/archiver
+	// MUSL is NOT enabled by default for PROGRAM modules - must be explicitly specified
 	ctx := ParseContext{
 		Platform:   "linux",
-		Musl:       false,
+		Musl:       true,
 		Language:   "",
 		TargetPath: ReferenceTarget,
 		BuildFlags: make(map[string]string),
@@ -69,9 +72,10 @@ func TestFullGraphGenerationToolsArchiver(t *testing.T) {
 }
 
 func BenchmarkFullGraphGenerationToolsArchiver(b *testing.B) {
+	// Important: Reference benchmark should match musl-enabled reference graph
 	ctx := ParseContext{
 		Platform:   "linux",
-		Musl:       false,
+		Musl:       true,
 		Language:   "",
 		TargetPath: ReferenceTarget,
 		BuildFlags: make(map[string]string),
@@ -91,9 +95,12 @@ func BenchmarkFullGraphGenerationToolsArchiver(b *testing.B) {
 }
 
 func TestGenerateAndValidateGraphInOneStep(t *testing.T) {
+	// Important: Reference graph (sg.json) was generated with musl enabled
+	// Command used: ya make -k --musl --host-platform-flag=MUSL=yes ... tools/archiver
+	// MUSL is NOT enabled by default for PROGRAM modules - must be explicitly specified
 	ctx := ParseContext{
 		Platform:   "linux",
-		Musl:       false,
+		Musl:       true,
 		Language:   "",
 		TargetPath: ReferenceTarget,
 		BuildFlags: make(map[string]string),
@@ -177,9 +184,10 @@ func TestGraphGenerationPerformance(t *testing.T) {
 		t.Skip("Skipping performance test in short mode")
 	}
 
+	// Reference performance should match musl-enabled reference graph
 	ctx := ParseContext{
 		Platform:   "linux",
-		Musl:       false,
+		Musl:       true,
 		Language:   "",
 		TargetPath: ReferenceTarget,
 		BuildFlags: make(map[string]string),
