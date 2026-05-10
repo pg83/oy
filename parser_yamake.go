@@ -313,6 +313,11 @@ func (p *Parser) parseConditional(module *Module) {
 			continue
 		}
 
+		if tok.Value == "IF" {
+			p.parseConditional(ifBranch.Module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -436,6 +441,11 @@ func (p *Parser) parseConditional(module *Module) {
 						elseBranch.Module.AddSource(src)
 					}
 				}
+				continue
+			}
+
+			if tok.Value == "IF" {
+				p.parseConditional(elseBranch.Module)
 				continue
 			}
 
