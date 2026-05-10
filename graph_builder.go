@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -14,6 +15,25 @@ func NewGraphBuilder(registry *ModuleRegistry, ctx *ParseContext) *GraphBuilder 
 	return &GraphBuilder{
 		registry: registry,
 		ctx:      ctx,
+	}
+}
+
+type PlatformArch string
+
+const (
+	PlatformAARCH64 PlatformArch = "default-linux-aarch64"
+	PlatformX86_64  PlatformArch = "default-linux-x86_64"
+)
+
+type PlatformAwareContext struct {
+	ctx  *ParseContext
+	arch PlatformArch
+}
+
+func NewPlatformContexts(ctx *ParseContext) []PlatformAwareContext {
+	return []PlatformAwareContext{
+		{ctx: ctx, arch: PlatformAARCH64},
+		{ctx: ctx, arch: PlatformX86_64},
 	}
 }
 
@@ -46,7 +66,16 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 		graph.AddInput(input)
 	}
 
-	graph.SetResult(NewUID([]byte(startModule.SourcePath)))
+	if startModule.Type == ModuleTypeProgram {
+		resultUIDs := []string{}
+		for _, arch := range []PlatformArch{PlatformAARCH64, PlatformX86_64} {
+			ldUIDKey := startModule.SourcePath + ":LD:" + string(arch)
+			resultUIDs = append(resultUIDs, NewUID([]byte(ldUIDKey)))
+		}
+		graph.SetResult(resultUIDs...)
+	} else {
+		graph.SetResult(NewUID([]byte(startModule.SourcePath)))
+	}
 
 	return graph
 }
@@ -131,47 +160,476 @@ func (gb *GraphBuilder) moduleOutput(module *Module) string {
 func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[string]*Module) []*GraphNode {
 	var nodes []*GraphNode
 
-	switch module.Type {
-	case ModuleTypeProgram, ModuleTypeLibrary:
-		compilableSources := gb.filterCompilableSources(module.Sources)
+	platformContexts := NewPlatformContexts(gb.ctx)
 
-		if len(compilableSources) > 0 {
-			for _, src := range compilableSources {
-				compileNode := gb.createCompileNode(module, src)
-				nodes = append(nodes, compileNode)
-			}
+	for _, platformCtx := range platformContexts {
+		phaseNodes := gb.createPlatformExecutionNodes(module, moduleUIDMap, platformCtx)
+		nodes = append(nodes, phaseNodes...)
+	}
 
-			finalNode := gb.createFinalNode(module, compilableSources, moduleUIDMap)
+	return nodes
+}
+
+func (gb *GraphBuilder) createPlatformExecutionNodes(
+	module *Module,
+	moduleUIDMap map[string]*Module,
+	platformCtx PlatformAwareContext,
+) []*GraphNode {
+	var nodes []*GraphNode
+
+	compileNodes, objectOutputs := gb.createCompilePhaseNodes(module, platformCtx)
+	nodes = append(nodes, compileNodes...)
+
+	if len(objectOutputs) > 0 && (module.Type == ModuleTypeProgram || module.Type == ModuleTypeLibrary) {
+		finalNode := gb.createFinalPhaseNode(module, objectOutputs, moduleUIDMap, platformCtx)
+		if finalNode != nil {
 			nodes = append(nodes, finalNode)
-		} else {
-			fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
-			if fallbackNode != nil {
-				nodes = append(nodes, fallbackNode)
-			}
-		}
-	case ModuleTypeGoLibrary:
-		fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
-		if fallbackNode != nil {
-			nodes = append(nodes, fallbackNode)
-		}
-	default:
-		fallbackNode := gb.createFallbackNode(module, moduleUIDMap)
-		if fallbackNode != nil {
-			nodes = append(nodes, fallbackNode)
 		}
 	}
 
 	return nodes
 }
 
-func (gb *GraphBuilder) filterCompilableSources(sources []string) []string {
-	var result []string
-	for _, src := range sources {
-		if isCompilableCSource(src) {
-			result = append(result, src)
+func (gb *GraphBuilder) createCompilePhaseNodes(
+	module *Module,
+	platformCtx PlatformAwareContext,
+) ([]*GraphNode, []string) {
+	var nodes []*GraphNode
+	var objectOutputs []string
+
+	for _, src := range module.Sources {
+		nodeType := gb.determineCompileNodeType(src)
+
+		switch nodeType {
+		case "CC":
+			ccNode := gb.createCCNode(module, src, platformCtx)
+			nodes = append(nodes, ccNode)
+			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
+			objectOutputs = append(objectOutputs, objOutput)
+		case "AS":
+			asNode := gb.createASNode(module, src, platformCtx)
+			nodes = append(nodes, asNode)
+			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
+			objectOutputs = append(objectOutputs, objOutput)
 		}
 	}
-	return result
+
+	return nodes, objectOutputs
+}
+
+func (gb *GraphBuilder) determineCompileNodeType(src string) string {
+	if isCompilableCSource(src) {
+		return "CC"
+	}
+	if strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") {
+		return "AS"
+	}
+	return ""
+}
+
+func (gb *GraphBuilder) platformObjectOutput(module *Module, src string, arch PlatformArch) string {
+	return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".o")
+}
+
+func (gb *GraphBuilder) createCCNode(
+	module *Module,
+	src string,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	compileUIDKey := fmt.Sprintf("%s:CC:%s:%s", module.SourcePath, platformCtx.arch, src)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(compileUIDKey))
+	node.SelfUID = NewUID([]byte(compileUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(compileUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineCCSourceLanguage(src),
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateCCCommand(module, src, platformCtx.arch),
+			Env:     gb.generateCCEnvironment(module, platformCtx.arch),
+		},
+	}
+
+	node.Inputs = []string{gb.sourceInput(module, src)}
+	node.Outputs = []string{gb.platformObjectOutput(module, src, platformCtx.arch)}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(compileUIDKey + "_kv")),
+		"p":   "CC",
+		"pc":  "green",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) determineCCSourceLanguage(src string) string {
+	if isCSource(src) {
+		return "c"
+	}
+	return "cpp"
+}
+
+func (gb *GraphBuilder) generateCCCommand(
+	module *Module,
+	src string,
+	arch PlatformArch,
+) []string {
+	compiler := "clang"
+	if isCXXSource(src) {
+		compiler = "clang++"
+	}
+
+	target := "aarch64-linux-gnu"
+	march := "armv8-a"
+	if arch == PlatformX86_64 {
+		target = "x86_64-linux-gnu"
+		march = "x86-64"
+	}
+
+	return []string{
+		compiler,
+		"--target=" + target,
+		"-march=" + march,
+		"--sysroot=/nowhere",
+		"-B$(OS_SDK_ROOT-sbr:309054781)/usr/bin",
+		"-c",
+		gb.sourceInput(module, src),
+		"-o",
+		gb.platformObjectOutput(module, src, arch),
+		"-I$(SOURCE_ROOT)",
+		"-I$(SOURCE_ROOT)/" + module.SourcePath,
+		"-fdebug-prefix-map=$(BUILD_ROOT)=/-B",
+		"-fdebug-prefix-map=$(SOURCE_ROOT)=/-S",
+		"-pipe",
+		"-g",
+		"-fsigned-char",
+	}
+}
+
+func (gb *GraphBuilder) generateCCEnvironment(
+	module *Module,
+	arch PlatformArch,
+) map[string]string {
+	return map[string]string{
+		"ARCADIA_ROOT_DISTBUILD": "$(SOURCE_ROOT)",
+		"CPATH":                  "",
+		"DYLD_LIBRARY_PATH":      "",
+		"LIBRARY_PATH":           "",
+		"SDKROOT":                "",
+	}
+}
+
+func (gb *GraphBuilder) createASNode(
+	module *Module,
+	src string,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	asUIDKey := fmt.Sprintf("%s:AS:%s:%s", module.SourcePath, platformCtx.arch, src)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(asUIDKey))
+	node.SelfUID = NewUID([]byte(asUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(asUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: "asm",
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateASCommand(module, src, platformCtx.arch),
+			Env:     gb.generateCCEnvironment(module, platformCtx.arch),
+		},
+	}
+
+	node.Inputs = []string{gb.sourceInput(module, src)}
+	node.Outputs = []string{gb.platformObjectOutput(module, src, platformCtx.arch)}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(asUIDKey + "_kv")),
+		"p":   "AS",
+		"pc":  "light-green",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateASCommand(
+	module *Module,
+	src string,
+	arch PlatformArch,
+) []string {
+	compiler := "clang"
+
+	target := "aarch64-linux-gnu"
+	march := "armv8-a"
+	if arch == PlatformX86_64 {
+		target = "x86_64-linux-gnu"
+		march = "x86-64"
+	}
+
+	return []string{
+		compiler,
+		"--target=" + target,
+		"-march=" + march,
+		"--sysroot=/nowhere",
+		"-B$(OS_SDK_ROOT-sbr:309054781)/usr/bin",
+		"-c",
+		gb.sourceInput(module, src),
+		"-o",
+		gb.platformObjectOutput(module, src, arch),
+	}
+}
+
+func (gb *GraphBuilder) createFinalPhaseNode(
+	module *Module,
+	objectOutputs []string,
+	moduleUIDMap map[string]*Module,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	switch module.Type {
+	case ModuleTypeLibrary:
+		return gb.createARNode(module, objectOutputs, moduleUIDMap, platformCtx)
+	case ModuleTypeProgram:
+		return gb.createLDNode(module, objectOutputs, moduleUIDMap, platformCtx)
+	default:
+		return nil
+	}
+}
+
+func (gb *GraphBuilder) createARNode(
+	module *Module,
+	objectOutputs []string,
+	moduleUIDMap map[string]*Module,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	finalUIDKey := fmt.Sprintf("%s:AR:%s", module.SourcePath, platformCtx.arch)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(finalUIDKey))
+	node.SelfUID = NewUID([]byte(finalUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(finalUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineModuleLanguage(module),
+		ModuleType: "lib",
+	}
+
+	compileDeps := gb.getCompileDepUIDs(module, platformCtx.arch)
+	node.Deps = compileDeps
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateARCommand(module, objectOutputs, platformCtx.arch),
+			Env:     gb.generateCCEnvironment(module, platformCtx.arch),
+		},
+	}
+
+	node.Inputs = objectOutputs
+	node.Outputs = []string{gb.platformModuleOutput(module, platformCtx.arch)}
+
+	node.KV = map[string]string{
+		"uid":      NewUID([]byte(finalUIDKey + "_kv")),
+		"p":        "AR",
+		"pc":       "light-red",
+		"show_out": "yes",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) getCompileDepUIDs(module *Module, arch PlatformArch) []string {
+	var deps []string
+	for _, src := range module.Sources {
+		if !isCompilableCSource(src) && !(strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S")) {
+			continue
+		}
+		compileUIDKey := fmt.Sprintf("%s:CC:%s:%s", module.SourcePath, arch, src)
+		if strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") {
+			compileUIDKey = fmt.Sprintf("%s:AS:%s:%s", module.SourcePath, arch, src)
+		}
+		compileUID := NewUID([]byte(compileUIDKey))
+		deps = append(deps, compileUID)
+	}
+	return deps
+}
+
+func (gb *GraphBuilder) platformModuleOutput(module *Module, arch PlatformArch) string {
+	baseName := filepath.Base(module.SourcePath)
+	switch module.Type {
+	case ModuleTypeLibrary:
+		return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "lib"+baseName+".a")
+	case ModuleTypeProgram:
+		return "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, baseName)
+	default:
+		return ""
+	}
+}
+
+func (gb *GraphBuilder) generateARCommand(
+	module *Module,
+	objectOutputs []string,
+	arch PlatformArch,
+) []string {
+	args := []string{
+		"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+		"$(SOURCE_ROOT)/build/scripts/link_lib.py",
+		"$(CLANG-2403293607)/bin/llvm-ar",
+		"LLVM_AR",
+		"gnu",
+		"$(BUILD_ROOT)",
+		"None",
+		"--",
+		"--",
+		gb.platformModuleOutput(module, arch),
+	}
+	args = append(args, objectOutputs...)
+	return args
+}
+
+func (gb *GraphBuilder) createLDNode(
+	module *Module,
+	objectOutputs []string,
+	moduleUIDMap map[string]*Module,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	finalUIDKey := fmt.Sprintf("%s:LD:%s", module.SourcePath, platformCtx.arch)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(finalUIDKey))
+	node.SelfUID = NewUID([]byte(finalUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(finalUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineModuleLanguage(module),
+		ModuleType: "bin",
+	}
+
+	compileDeps := gb.getCompileDepUIDs(module, platformCtx.arch)
+	archiveDeps := gb.getArchiveDepUIDs(module, moduleUIDMap, platformCtx.arch)
+	node.Deps = append(compileDeps, archiveDeps...)
+
+	node.Cmds = gb.generateLDCommands(module, objectOutputs, platformCtx.arch)
+	node.Inputs = objectOutputs
+	node.Outputs = []string{gb.platformModuleOutput(module, platformCtx.arch)}
+
+	node.KV = map[string]string{
+		"uid":      NewUID([]byte(finalUIDKey + "_kv")),
+		"p":        "LD",
+		"pc":       "light-blue",
+		"show_out": "yes",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) getArchiveDepUIDs(module *Module, moduleUIDMap map[string]*Module, arch PlatformArch) []string {
+	var deps []string
+	for _, depPath := range module.Dependencies {
+		depModule := gb.resolveDependencyModule(depPath, moduleUIDMap)
+		if depModule == nil {
+			continue
+		}
+		if depModule.Type != ModuleTypeLibrary {
+			continue
+		}
+		archiveUIDKey := fmt.Sprintf("%s:AR:%s", depModule.SourcePath, arch)
+		archiveUID := NewUID([]byte(archiveUIDKey))
+		deps = append(deps, archiveUID)
+	}
+	return deps
+}
+
+func (gb *GraphBuilder) generateLDCommands(
+	module *Module,
+	objectOutputs []string,
+	arch PlatformArch,
+) []Command {
+	target := "aarch64-linux-gnu"
+	march := "armv8-a"
+	if arch == PlatformX86_64 {
+		target = "x86_64-linux-gnu"
+		march = "x86-64"
+	}
+
+	cmd1 := Command{
+		CmdArgs: []string{
+			"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+			"$(SOURCE_ROOT)/build/scripts/vcs_info.py",
+			"$(VCS)/vcs.json",
+			"$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c"),
+			"$(SOURCE_ROOT)/build/scripts/c_templates/svn_interface.c",
+		},
+		Env: gb.generateCCEnvironment(module, arch),
+	}
+
+	cmd2 := Command{
+		CmdArgs: []string{
+			"$(CLANG-2403293607)/bin/clang",
+			"--target=" + target,
+			"-march=" + march,
+			"--sysroot=/nowhere",
+			"-B$(OS_SDK_ROOT-sbr:309054781)/usr/bin",
+			"-c",
+			"-o",
+			"$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c.o"),
+			"$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c"),
+			"-I$(SOURCE_ROOT)",
+		},
+		Env: gb.generateCCEnvironment(module, arch),
+	}
+
+	cmd3 := Command{
+		CmdArgs: []string{
+			"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+			"$(SOURCE_ROOT)/build/scripts/link_exe.py",
+			"--start-plugins",
+			"",
+			"--end-plugins",
+			"--clang-ver",
+			"20",
+			"--source-root",
+			"$(SOURCE_ROOT)",
+		},
+		Env: gb.generateCCEnvironment(module, arch),
+	}
+
+	cmd4 := Command{
+		CmdArgs: []string{
+			"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+			"$(SOURCE_ROOT)/build/scripts/fs_tools.py",
+			"link_or_copy_to_dir",
+			"--no-check",
+			"$(BUILD_ROOT)/" + module.SourcePath + "/",
+		},
+		Env: gb.generateCCEnvironment(module, arch),
+	}
+
+	return []Command{cmd1, cmd2, cmd3, cmd4}
 }
 
 // Reference CC node pattern from sg.json:
@@ -243,7 +701,7 @@ func (gb *GraphBuilder) createFinalNode(module *Module, compilableSources []stri
 	}
 
 	moduleDeps := gb.collectModuleDependencies(module)
-	compileDeps := gb.getCompileDepUIDs(module, compilableSources)
+	compileDeps := gb.getCompileDepUIDsLegacy(module, compilableSources)
 
 	allDeps := append(compileDeps, moduleDeps...)
 	node.Deps = allDeps
@@ -293,7 +751,7 @@ func (gb *GraphBuilder) createFinalNode(module *Module, compilableSources []stri
 	return node
 }
 
-func (gb *GraphBuilder) getCompileDepUIDs(module *Module, compilableSources []string) []string {
+func (gb *GraphBuilder) getCompileDepUIDsLegacy(module *Module, compilableSources []string) []string {
 	var deps []string
 	for _, src := range compilableSources {
 		compileUIDKey := module.SourcePath + ":compile:" + src
