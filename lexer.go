@@ -121,7 +121,7 @@ func (l *Lexer) readIdent() string {
 
 	for {
 		ch := l.peek()
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' || ch == ':' {
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' || ch == ':' || ch == ',' {
 			buf.WriteRune(ch)
 			l.read()
 		} else {
@@ -300,7 +300,7 @@ func (l *Lexer) NextToken() (Token, error) {
 			continue
 		}
 
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' || ch == '.' || ch == ':' {
+		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '-' || ch == '*' || ch == '.' || ch == ':' || ch == ',' {
 			startLine := l.line
 			startCol := l.col
 			ident := l.readIdent()
