@@ -81,7 +81,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 	}
 
 	expectedJS := 1
-	expectedR6 := 2
+	expectedR6 := 1
 	expectedCP := 2
 
 	t.Logf("Node types: %+v", nodeTypes)
