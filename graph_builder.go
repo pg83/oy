@@ -331,10 +331,15 @@ func (gb *GraphBuilder) generateCCEnvironment(
 	module *Module,
 	arch PlatformArch,
 ) map[string]string {
+	dyldPath := "$(CLANG-2403293607)/lib:$(OS_SDK_ROOT-sbr:309054781)/usr/lib/x86_64-linux-gnu"
+	if arch == PlatformAARCH64 {
+		dyldPath = "$(CLANG-2403293607)/lib:$(OS_SDK_ROOT-sbr:309054781)/usr/lib/aarch64-linux-gnu"
+	}
+
 	return map[string]string{
 		"ARCADIA_ROOT_DISTBUILD": "$(SOURCE_ROOT)",
 		"CPATH":                  "",
-		"DYLD_LIBRARY_PATH":      "",
+		"DYLD_LIBRARY_PATH":      dyldPath,
 		"LIBRARY_PATH":           "",
 		"SDKROOT":                "",
 	}
@@ -502,18 +507,30 @@ func (gb *GraphBuilder) collectTransitiveHeaders(module *Module, arch PlatformAr
 
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
-			if !strings.Contains(line, "#include") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "#include") {
 				continue
 			}
-			if strings.Contains(line, "<") && strings.Contains(line, ">") {
-				start := strings.Index(line, "<") + 1
-				end := strings.Index(line, ">")
+
+			var header string
+			if strings.Contains(trimmed, "<") && strings.Contains(trimmed, ">") {
+				start := strings.Index(trimmed, "<") + 1
+				end := strings.LastIndex(trimmed, ">")
 				if start > 0 && end > start {
-					header := line[start:end]
-					headerPath := gb.resolveHeaderPath(header, module.SourcePath)
-					if headerPath != "" {
-						headers["$(SOURCE_ROOT)/"+headerPath] = true
-					}
+					header = trimmed[start:end]
+				}
+			} else if strings.Contains(trimmed, "\"") {
+				start := strings.Index(trimmed, "\"") + 1
+				end := strings.LastIndex(trimmed, "\"")
+				if start > 0 && end > start {
+					header = trimmed[start:end]
+				}
+			}
+
+			if header != "" {
+				headerPath := gb.resolveHeaderPath(header, module.SourcePath)
+				if headerPath != "" {
+					headers["$(SOURCE_ROOT)/"+headerPath] = true
 				}
 			}
 		}
@@ -530,9 +547,25 @@ func (gb *GraphBuilder) resolveHeaderPath(header, moduleSourcePath string) strin
 	paths := []string{
 		filepath.Join(moduleSourcePath, header),
 		filepath.Join("contrib/libs/musl/include", header),
+		filepath.Join("contrib/libs/musl/include/arpa", header),
+		filepath.Join("contrib/libs/musl/include/net", header),
+		filepath.Join("contrib/libs/musl/include/netinet", header),
+		filepath.Join("contrib/libs/musl/include/sys", header),
+		filepath.Join("contrib/libs/linux-headers/include", header),
+		filepath.Join("contrib/libs/linux-headers/include/asm", header),
+		filepath.Join("contrib/libs/linux-headers/include/asm-generic", header),
+		filepath.Join("contrib/libs/linux-headers/include/linux", header),
+		filepath.Join("contrib/libs/linux-headers/include/net", header),
+		filepath.Join("contrib/libs/linux-headers/include/uapi", header),
+		filepath.Join("contrib/libs/linux-headers/include/uapi/asm", header),
+		filepath.Join("contrib/libs/linux-headers/include/uapi/asm-generic", header),
+		filepath.Join("contrib/libs/linux-headers/include/uapi/linux", header),
 		filepath.Join("contrib/libs/cxxsupp/libcxx/include", header),
 		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__support", header),
+		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__support/ibm", header),
+		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__support/win32", header),
 		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__filesystem", header),
+		filepath.Join("contrib/libs/cxxsupp/builtins", header),
 	}
 
 	for _, path := range paths {
