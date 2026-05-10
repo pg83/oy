@@ -58,10 +58,12 @@ gofmt -d *.go
 Current CLI examples:
 
 ```bash
-go run . /home/pg/monorepo/yatool_orig/tools/archiver
-go run . -G --graph-file=test_sg.json /home/pg/monorepo/yatool_orig/tools/archiver
-go run . --graph-file=test_sg.json /home/pg/monorepo/yatool_orig/tools/archiver
+go run . --musl --host-platform-flag=MUSL=yes /home/pg/monorepo/yatool_orig/tools/archiver
+go run . -G --graph-file=test_sg.json --musl --host-platform-flag=MUSL=yes /home/pg/monorepo/yatool_orig/tools/archiver
+go run . --graph-file=test_sg.json --musl --host-platform-flag=MUSL=yes /home/pg/monorepo/yatool_orig/tools/archiver
 ```
+
+**Important: MUSL flag behavior** - The `--musl` flag and `--host-platform-flag=MUSL=yes` are required to match the reference graph generation (see `srun.sh`). MUSL is **not enabled by default** for PROGRAM modules and must be explicitly specified. Without these flags, the archiver PEERDIR chain will not include `contrib/libs/musl` dependencies, resulting in significantly fewer nodes.
 
 `go run . -G <target>` writes `sg.json` in the current working directory and prints progress lines to stdout before writing the graph file. Do not redirect stdout as if it were graph JSON.
 
@@ -70,6 +72,8 @@ Regenerate the reference graph with:
 ```bash
 cd /home/pg/monorepo/yatool_orig && ./srun.sh
 ```
+
+The reference `srun.sh` uses: `ya make -k --musl --host-platform-flag=MUSL=yes ... tools/archiver`
 
 The current CLI resolves relative target paths against the workspace and also accepts absolute paths. This workspace does not contain `tools/archiver`, so use the absolute reference path for CLI smoke tests. The integration tests build `tools/archiver` by calling `BuildDependencyGraph` with source root `/home/pg/monorepo/yatool_orig`, so CLI parity with the reference source tree should be verified before documenting it as a final workflow.
 

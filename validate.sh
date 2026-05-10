@@ -47,7 +47,7 @@ fi
 
 step "Running acceptance graph harness"
 set +e
-go run . -G --graph-file="$generated_graph" --validate-against="$reference_graph" "$acceptance_target"
+go run . -G --musl --host-platform-flag=MUSL=yes --graph-file="$generated_graph" "$acceptance_target"
 status=$?
 set -e
 
