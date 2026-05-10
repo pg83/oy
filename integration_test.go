@@ -213,3 +213,108 @@ func TestGraphGenerationPerformance(t *testing.T) {
 		t.Logf("WARNING: Graph generation median took %v, which is above the recommended threshold of %v", report.Median, threshold)
 	}
 }
+
+// Step 2: Profile JS/AS Node Creation Impact
+
+// BenchmarkJSNodeCreation measures createJSNode latency per source
+func BenchmarkJSNodeCreation(b *testing.B) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/cpp/test",
+		Sources:    []string{"all_charset.cpp", "main.cpp", "utils.cpp"},
+		Properties: make(map[string]string),
+	}
+
+	ctx := &ParseContext{
+		Platform:   "linux",
+		TargetPath: "library/cpp/test",
+		BuildFlags: make(map[string]string),
+	}
+
+	gb := NewGraphBuilder(NewModuleRegistry(), ctx)
+	platformCtx := PlatformAwareContext{
+		ctx:  ctx,
+		arch: PlatformAARCH64,
+	}
+
+	src := "all_charset.cpp"
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = gb.createJSNode(module, src, platformCtx)
+	}
+}
+
+// BenchmarkASNodeCreation measures createASNode latency per source
+func BenchmarkASNodeCreation(b *testing.B) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/asm/test",
+		Sources:    []string{"start.s"},
+		Properties: make(map[string]string),
+	}
+
+	ctx := &ParseContext{
+		Platform:   "linux",
+		TargetPath: "library/asm/test",
+		BuildFlags: make(map[string]string),
+	}
+
+	gb := NewGraphBuilder(NewModuleRegistry(), ctx)
+	platformCtx := PlatformAwareContext{
+		ctx:  ctx,
+		arch: PlatformAARCH64,
+	}
+
+	src := "start.s"
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = gb.createASNode(module, src, platformCtx)
+	}
+}
+
+// BenchmarkNodeCreationMixed measures CC+AS+JS node creation combined
+func BenchmarkNodeCreationMixed(b *testing.B) {
+	ccModule := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/cpp/test",
+		Sources:    []string{"main.cpp", "utils.cpp"},
+		Properties: make(map[string]string),
+	}
+
+	asModule := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/asm/test",
+		Sources:    []string{"start.s"},
+		Properties: make(map[string]string),
+	}
+
+	jsModule := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/js/test",
+		Sources:    []string{"all_charset.cpp", "main.cpp"},
+		Properties: make(map[string]string),
+	}
+
+	ctx := &ParseContext{
+		Platform:   "linux",
+		TargetPath: "library/cpp/test",
+		BuildFlags: make(map[string]string),
+	}
+
+	gb := NewGraphBuilder(NewModuleRegistry(), ctx)
+	platformCtx := PlatformAwareContext{
+		ctx:  ctx,
+		arch: PlatformAARCH64,
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		// Measure creating one of each type
+		_ = gb.createJSNode(jsModule, "all_charset.cpp", platformCtx)
+		_ = gb.createASNode(asModule, "start.s", platformCtx)
+		_ = gb.createCCNode(ccModule, "main.cpp", platformCtx)
+	}
+}
