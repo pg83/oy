@@ -22,6 +22,8 @@ func main() {
 		if targetPath == "" {
 			fmt.Printf("Usage: ymake [flags] <target-path>\n")
 			fmt.Printf("Example: ymake --musl tools/archiver\n")
+			fmt.Printf("Flags:\n")
+			fmt.Printf("  --benchmark   Run performance benchmark (multiple iterations)\n")
 			os.Exit(1)
 		}
 
@@ -29,10 +31,16 @@ func main() {
 		resolvedTarget, sourceRoot := resolveCLIBuildTarget(targetPath, cwd)
 		ctx := buildParseContext(result, resolvedTarget)
 
-		fmt.Printf("Building graph for %s from %s...\n", resolvedTarget, sourceRoot)
-		graph := Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
-
-		fmt.Printf("Successfully generated %d graph nodes\n", len(graph.Nodes))
+		var graph *Graph
+		if result.Benchmark {
+			report := MeasureGraphGeneration(resolvedTarget, ctx, sourceRoot, 5)
+			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
+			fmt.Printf("Benchmark results: median %v, %d runs, %d nodes\n", report.Median, len(report.Runs), len(graph.Nodes))
+		} else {
+			fmt.Printf("Building graph for %s from %s...\n", resolvedTarget, sourceRoot)
+			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
+			fmt.Printf("Successfully generated %d graph nodes\n", len(graph.Nodes))
+		}
 
 		if result.OutputJSON {
 			outputPath := "sg.json"
@@ -86,7 +94,7 @@ func isCLIFlagArg(arg string) bool {
 	}
 
 	switch arg {
-	case "lex", "-G", "--graph", "--musl":
+	case "lex", "-G", "--graph", "--musl", "--benchmark":
 		return true
 	}
 
