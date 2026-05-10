@@ -273,7 +273,7 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	}
 
 	for _, src := range module.Sources {
-		nodeType := gb.determineCompileNodeType(module, src)
+		nodeType := gb.determineCompileNodeTypeWithArch(module, src, platformCtx.arch)
 
 		switch nodeType {
 		case "CC":
@@ -338,6 +338,45 @@ func (gb *GraphBuilder) determineCompileNodeType(module *Module, src string) str
 		return "CC"
 	}
 	return ""
+}
+
+func (gb *GraphBuilder) determineCompileNodeTypeWithArch(module *Module, src string, arch PlatformArch) string {
+	nodeType := gb.determineCompileNodeType(module, src)
+
+	if nodeType == "AS" {
+		if !isArchSpecificASM(src, arch) {
+			return ""
+		}
+	}
+
+	return nodeType
+}
+
+func isArchSpecificASM(src string, arch PlatformArch) bool {
+	srcLower := strings.ToLower(src)
+
+	isASMFile := strings.HasSuffix(srcLower, ".s") || strings.HasSuffix(srcLower, ".S")
+	if !isASMFile {
+		return true
+	}
+
+	containsAarch64 := strings.Contains(srcLower, "aarch64/") || strings.Contains(srcLower, "arm64/")
+	containsX86_64 := strings.Contains(srcLower, "x86_64/") || strings.Contains(srcLower, "x8664") || strings.Contains(srcLower, "x86-64")
+	containsX86 := strings.Contains(srcLower, "/x86/") || strings.Contains(srcLower, "/i386/")
+
+	if containsAarch64 && (containsX86_64 || containsX86) {
+		return true
+	}
+
+	if containsAarch64 {
+		return arch == PlatformAARCH64
+	}
+
+	if containsX86_64 || containsX86 {
+		return arch == PlatformX86_64
+	}
+
+	return true
 }
 
 func (gb *GraphBuilder) platformObjectOutput(module *Module, src string, arch PlatformArch) string {
