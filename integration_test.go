@@ -25,7 +25,7 @@ func TestFullGraphGenerationToolsArchiver(t *testing.T) {
 	}
 
 	generatorStart := time.Now()
-	graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot)
+	graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot, nil)
 	if err != nil {
 		t.Fatalf("BuildDependencyGraph failed: %v", err)
 	}
@@ -79,7 +79,7 @@ func BenchmarkFullGraphGenerationToolsArchiver(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot)
+		graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot, nil)
 		if err != nil {
 			b.Fatalf("BuildDependencyGraph failed: %v", err)
 		}
@@ -99,7 +99,7 @@ func TestGenerateAndValidateGraphInOneStep(t *testing.T) {
 		BuildFlags: make(map[string]string),
 	}
 
-	graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot)
+	graph, err := BuildDependencyGraph(ReferenceTarget, ctx, SourceRoot, nil)
 	if err != nil {
 		t.Fatalf("BuildDependencyGraph failed: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestGraphGenerationPerformance(t *testing.T) {
 		BuildFlags: make(map[string]string),
 	}
 
-	report := MeasureGraphGeneration(ReferenceTarget, ctx, SourceRoot, 3)
+	report := MeasureGraphGeneration(ReferenceTarget, ctx, SourceRoot, nil, 3)
 
 	runDescriptions := make([]string, 0, len(report.Runs))
 	for _, run := range report.Runs {

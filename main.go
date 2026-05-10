@@ -31,14 +31,25 @@ func main() {
 		resolvedTarget, sourceRoot := resolveCLIBuildTarget(targetPath, cwd)
 		ctx := buildParseContext(result, resolvedTarget)
 
+		var diag *TraversalLogger
+		if result.DiagPeerdir {
+			diag = NewTraversalLogger(true)
+			SetGlobalTraversalLogger(diag)
+		}
+		defer func() {
+			if diag != nil {
+				diag.OutputSummary()
+			}
+		}()
+
 		var graph *Graph
 		if result.Benchmark {
-			report := MeasureGraphGeneration(resolvedTarget, ctx, sourceRoot, 5)
-			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
+			report := MeasureGraphGeneration(resolvedTarget, ctx, sourceRoot, diag, 5)
+			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot, diag))
 			fmt.Printf("Benchmark results: median %v, %d runs, %d nodes\n", report.Median, len(report.Runs), len(graph.Nodes))
 		} else {
 			fmt.Printf("Building graph for %s from %s...\n", resolvedTarget, sourceRoot)
-			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot))
+			graph = Throw2(BuildDependencyGraph(resolvedTarget, ctx, sourceRoot, diag))
 			fmt.Printf("Successfully generated %d graph nodes\n", len(graph.Nodes))
 		}
 
@@ -94,7 +105,7 @@ func isCLIFlagArg(arg string) bool {
 	}
 
 	switch arg {
-	case "lex", "-G", "--graph", "--musl", "--benchmark":
+	case "lex", "-G", "--graph", "--musl", "--benchmark", "--diag-peerdir":
 		return true
 	}
 
