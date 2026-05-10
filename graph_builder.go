@@ -2,19 +2,30 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 type GraphBuilder struct {
-	registry *ModuleRegistry
-	ctx      *ParseContext
+	registry   *ModuleRegistry
+	ctx        *ParseContext
+	sourceRoot string
 }
 
 func NewGraphBuilder(registry *ModuleRegistry, ctx *ParseContext) *GraphBuilder {
 	return &GraphBuilder{
-		registry: registry,
-		ctx:      ctx,
+		registry:   registry,
+		ctx:        ctx,
+		sourceRoot: "",
+	}
+}
+
+func NewGraphBuilderWithSourceRoot(registry *ModuleRegistry, ctx *ParseContext, sourceRoot string) *GraphBuilder {
+	return &GraphBuilder{
+		registry:   registry,
+		ctx:        ctx,
+		sourceRoot: sourceRoot,
 	}
 }
 
@@ -438,6 +449,8 @@ func (gb *GraphBuilder) createARNode(
 	compileDeps := gb.getCompileDepUIDs(module, platformCtx.arch)
 	node.Deps = compileDeps
 
+	transitiveHeaders := gb.collectTransitiveHeaders(module, platformCtx.arch)
+
 	node.Cmds = []Command{
 		{
 			CmdArgs: gb.generateARCommand(module, objectOutputs, platformCtx.arch),
@@ -445,7 +458,16 @@ func (gb *GraphBuilder) createARNode(
 		},
 	}
 
-	node.Inputs = objectOutputs
+	var allInputs []string
+	allInputs = append(allInputs, objectOutputs...)
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/link_lib.py")
+	allInputs = append(allInputs, transitiveHeaders...)
+
+	for _, src := range module.Sources {
+		allInputs = append(allInputs, gb.sourceInput(module, src))
+	}
+
+	node.Inputs = allInputs
 	node.Outputs = []string{gb.platformModuleOutput(module, platformCtx.arch)}
 
 	node.KV = map[string]string{
@@ -456,6 +478,71 @@ func (gb *GraphBuilder) createARNode(
 	}
 
 	return node
+}
+
+func (gb *GraphBuilder) platformObjectOutputs(module *Module, arch PlatformArch) []string {
+	var outputs []string
+	for _, src := range module.Sources {
+		if isCompilableCSource(src) || strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") {
+			outputs = append(outputs, gb.platformObjectOutput(module, src, arch))
+		}
+	}
+	return outputs
+}
+
+func (gb *GraphBuilder) collectTransitiveHeaders(module *Module, arch PlatformArch) []string {
+	headers := make(map[string]bool)
+
+	for _, src := range module.Sources {
+		srcPath := filepath.Join(gb.sourceRoot, module.SourcePath, src)
+		content, err := os.ReadFile(srcPath)
+		if err != nil {
+			continue
+		}
+
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			if !strings.Contains(line, "#include") {
+				continue
+			}
+			if strings.Contains(line, "<") && strings.Contains(line, ">") {
+				start := strings.Index(line, "<") + 1
+				end := strings.Index(line, ">")
+				if start > 0 && end > start {
+					header := line[start:end]
+					headerPath := gb.resolveHeaderPath(header, module.SourcePath)
+					if headerPath != "" {
+						headers["$(SOURCE_ROOT)/"+headerPath] = true
+					}
+				}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(headers))
+	for h := range headers {
+		result = append(result, h)
+	}
+	return result
+}
+
+func (gb *GraphBuilder) resolveHeaderPath(header, moduleSourcePath string) string {
+	paths := []string{
+		filepath.Join(moduleSourcePath, header),
+		filepath.Join("contrib/libs/musl/include", header),
+		filepath.Join("contrib/libs/cxxsupp/libcxx/include", header),
+		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__support", header),
+		filepath.Join("contrib/libs/cxxsupp/libcxx/include/__filesystem", header),
+	}
+
+	for _, path := range paths {
+		fullPath := filepath.Join(gb.sourceRoot, path)
+		if _, err := os.Stat(fullPath); err == nil {
+			return path
+		}
+	}
+
+	return ""
 }
 
 func (gb *GraphBuilder) getCompileDepUIDs(module *Module, arch PlatformArch) []string {
@@ -533,8 +620,23 @@ func (gb *GraphBuilder) createLDNode(
 	archiveDeps := gb.getArchiveDepUIDs(module, moduleUIDMap, platformCtx.arch)
 	node.Deps = append(compileDeps, archiveDeps...)
 
+	archiveFiles := gb.getArchiveFiles(module, moduleUIDMap, platformCtx.arch)
+
+	transitiveHeaders := gb.collectTransitiveHeaders(module, platformCtx.arch)
+
+	var allInputs []string
+	versionO := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c.o")
+	allInputs = append(allInputs, versionO)
+	allInputs = append(allInputs, objectOutputs...)
+	allInputs = append(allInputs, archiveFiles...)
+	allInputs = append(allInputs, transitiveHeaders...)
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/vcs_info.py")
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/c_templates/svn_interface.c")
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/link_exe.py")
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/fs_tools.py")
+
 	node.Cmds = gb.generateLDCommands(module, objectOutputs, platformCtx.arch)
-	node.Inputs = objectOutputs
+	node.Inputs = allInputs
 	node.Outputs = []string{gb.platformModuleOutput(module, platformCtx.arch)}
 
 	node.KV = map[string]string{
@@ -547,21 +649,70 @@ func (gb *GraphBuilder) createLDNode(
 	return node
 }
 
-func (gb *GraphBuilder) getArchiveDepUIDs(module *Module, moduleUIDMap map[string]*Module, arch PlatformArch) []string {
-	var deps []string
+func (gb *GraphBuilder) getArchiveFiles(module *Module, moduleUIDMap map[string]*Module, arch PlatformArch) []string {
+	var files []string
+	seen := make(map[string]bool)
+
+	gb.collectTransitiveArchiveFiles(module, moduleUIDMap, arch, seen)
+
+	for file := range seen {
+		files = append(files, file)
+	}
+	return files
+}
+
+func (gb *GraphBuilder) collectTransitiveArchiveFiles(
+	module *Module,
+	moduleUIDMap map[string]*Module,
+	arch PlatformArch,
+	seen map[string]bool,
+) {
 	for _, depPath := range module.Dependencies {
 		depModule := gb.resolveDependencyModule(depPath, moduleUIDMap)
-		if depModule == nil {
+		if depModule == nil || depModule.Type != ModuleTypeLibrary {
 			continue
 		}
-		if depModule.Type != ModuleTypeLibrary {
-			continue
+
+		archiveFile := gb.platformModuleOutput(depModule, arch)
+		if !seen[archiveFile] {
+			seen[archiveFile] = true
+			gb.collectTransitiveArchiveFiles(depModule, moduleUIDMap, arch, seen)
 		}
-		archiveUIDKey := fmt.Sprintf("%s:AR:%s", depModule.SourcePath, arch)
-		archiveUID := NewUID([]byte(archiveUIDKey))
-		deps = append(deps, archiveUID)
+	}
+}
+
+func (gb *GraphBuilder) getArchiveDepUIDs(module *Module, moduleUIDMap map[string]*Module, arch PlatformArch) []string {
+	var deps []string
+	seen := make(map[string]bool)
+
+	gb.collectTransitiveArchiveDeps(module, moduleUIDMap, arch, seen)
+
+	for uid := range seen {
+		deps = append(deps, uid)
 	}
 	return deps
+}
+
+func (gb *GraphBuilder) collectTransitiveArchiveDeps(
+	module *Module,
+	moduleUIDMap map[string]*Module,
+	arch PlatformArch,
+	seen map[string]bool,
+) {
+	for _, depPath := range module.Dependencies {
+		depModule := gb.resolveDependencyModule(depPath, moduleUIDMap)
+		if depModule == nil || depModule.Type != ModuleTypeLibrary {
+			continue
+		}
+
+		archiveUIDKey := fmt.Sprintf("%s:AR:%s", depModule.SourcePath, arch)
+		archiveUID := NewUID([]byte(archiveUIDKey))
+
+		if !seen[archiveUID] {
+			seen[archiveUID] = true
+			gb.collectTransitiveArchiveDeps(depModule, moduleUIDMap, arch, seen)
+		}
+	}
 }
 
 func (gb *GraphBuilder) generateLDCommands(
@@ -599,23 +750,57 @@ func (gb *GraphBuilder) generateLDCommands(
 			"$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c.o"),
 			"$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_version.c"),
 			"-I$(SOURCE_ROOT)",
+			"-fdebug-prefix-map=$(BUILD_ROOT)=/-B",
+			"-fdebug-prefix-map=$(SOURCE_ROOT)=/-S",
+			"-fdebug-prefix-map=$(TOOL_ROOT)=/-T",
+			"-pipe",
+			"-g",
+			"-fsigned-char",
 		},
 		Env: gb.generateCCEnvironment(module, arch),
 	}
 
+	cmd3Args := []string{
+		"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+		"$(SOURCE_ROOT)/build/scripts/link_exe.py",
+		"--start-plugins",
+		"$(BUILD_ROOT)/contrib/libs/musl/include/musl.py.pyplugin",
+		"--end-plugins",
+		"--clang-ver",
+		"20",
+		"--source-root",
+		"$(SOURCE_ROOT)",
+		"--build-root",
+		"$(BUILD_ROOT)",
+		"--arch=LINUX",
+		"--objcopy-exe",
+		"$(CLANG-2403293607)/bin/llvm-objcopy",
+		"$(CLANG-2403293607)/bin/clang++",
+		"-Wl,--whole-archive",
+		"--ya-start-command-file",
+		"--ya-end-command-file",
+		"-Wl,--no-whole-archive",
+	}
+
+	cmd3Args = append(cmd3Args, "$(BUILD_ROOT)/"+filepath.Join(module.SourcePath, "_version.c.o"))
+	cmd3Args = append(cmd3Args, objectOutputs...)
+
+	cmd3Args = append(cmd3Args,
+		"-o",
+		"$(BUILD_ROOT)/"+filepath.Join(module.SourcePath, filepath.Base(module.SourcePath)),
+		"--target="+target,
+		"-march="+march,
+		"--sysroot=/nowhere",
+		"-B$(OS_SDK_ROOT-sbr:309054781)/usr/bin",
+		"-Wl,--start-group",
+		"-Wl,--end-group",
+		"-Wl,-rpath=@loader_path/.",
+		"-Wl,-rpath,@loader_path/../lib",
+	)
+
 	cmd3 := Command{
-		CmdArgs: []string{
-			"$(YMAKE_PYTHON3-1002064631)/bin/python3",
-			"$(SOURCE_ROOT)/build/scripts/link_exe.py",
-			"--start-plugins",
-			"",
-			"--end-plugins",
-			"--clang-ver",
-			"20",
-			"--source-root",
-			"$(SOURCE_ROOT)",
-		},
-		Env: gb.generateCCEnvironment(module, arch),
+		CmdArgs: cmd3Args,
+		Env:     gb.generateCCEnvironment(module, arch),
 	}
 
 	cmd4 := Command{
