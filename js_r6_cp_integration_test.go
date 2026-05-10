@@ -16,7 +16,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 
 	registry.Register("util/charset", &Module{
 		SourcePath: "util/charset",
-		Type:      ModuleTypeLibrary,
+		Type:       ModuleTypeLibrary,
 		Sources: []string{
 			"all_charset.cpp",
 			"generated/unidata.cpp",
@@ -32,7 +32,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 
 	registry.Register("util", &Module{
 		SourcePath: "util",
-		Type:      ModuleTypeLibrary,
+		Type:       ModuleTypeLibrary,
 		Sources: []string{
 			"datetime/parser.rl6",
 			"main.cpp",
@@ -43,7 +43,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 
 	registry.Register("contrib/libs/musl/include", &Module{
 		SourcePath: "contrib/libs/musl/include",
-		Type:      ModuleTypeLibrary,
+		Type:       ModuleTypeLibrary,
 		Sources: []string{
 			"musl.py",
 		},
@@ -53,7 +53,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 
 	registry.Register("test_module", &Module{
 		SourcePath: "test_module",
-		Type:      ModuleTypeLibrary,
+		Type:       ModuleTypeLibrary,
 		Sources: []string{
 			"main.cpp",
 		},

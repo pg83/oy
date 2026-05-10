@@ -15,7 +15,7 @@ func TestCreateJSNode(t *testing.T) {
 
 	registry := NewModuleRegistry()
 	registry.Register("util/charset", &Module{
-		SourcePath:    "util/charset",
+		SourcePath:   "util/charset",
 		Type:         ModuleTypeLibrary,
 		Sources:      []string{"all_charset.cpp", "generated/unidata.cpp", "recode_result.cpp"},
 		Dependencies: []string{},
@@ -97,7 +97,7 @@ func TestCreateR6Node(t *testing.T) {
 
 	registry := NewModuleRegistry()
 	registry.Register("util", &Module{
-		SourcePath:    "util",
+		SourcePath:   "util",
 		Type:         ModuleTypeLibrary,
 		Sources:      []string{"datetime/parser.rl6"},
 		Dependencies: []string{},
@@ -176,7 +176,7 @@ func TestCreateCPNode(t *testing.T) {
 
 	registry := NewModuleRegistry()
 	registry.Register("contrib/libs/musl/include", &Module{
-		SourcePath:    "contrib/libs/musl/include",
+		SourcePath:   "contrib/libs/musl/include",
 		Type:         ModuleTypeLibrary,
 		Sources:      []string{"musl.py"},
 		Dependencies: []string{},
@@ -249,8 +249,8 @@ func TestDetermineCompileNodeType(t *testing.T) {
 
 	testModule := &Module{
 		SourcePath: "regular/module",
-		Type:      ModuleTypeLibrary,
-		Sources:   []string{},
+		Type:       ModuleTypeLibrary,
+		Sources:    []string{},
 	}
 
 	tests := []struct {
@@ -276,8 +276,8 @@ func TestDetermineCompileNodeType(t *testing.T) {
 
 	jsModule := &Module{
 		SourcePath: "util/charset",
-		Type:      ModuleTypeLibrary,
-		Sources:   []string{},
+		Type:       ModuleTypeLibrary,
+		Sources:    []string{},
 	}
 
 	jsResult := gb.determineCompileNodeType(jsModule, "all_charset.cpp")

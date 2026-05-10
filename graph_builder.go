@@ -155,8 +155,8 @@ func isCopyRequiredSource(src string) bool {
 
 func isJSGenSource(modulePath string) bool {
 	jsGenModules := map[string]bool{
-		"util/charset":       true,
-		"util":               true,
+		"util/charset":         true,
+		"util":                 true,
 		"contrib/tools/ragel6": true,
 	}
 	return jsGenModules[modulePath]
@@ -164,8 +164,8 @@ func isJSGenSource(modulePath string) bool {
 
 func isJSOutputSource(src string) bool {
 	jsOutputs := map[string]bool{
-		"all_charset.cpp":        true,
-		"main.cpp":              true,
+		"all_charset.cpp": true,
+		"main.cpp":        true,
 	}
 	return jsOutputs[strings.TrimSuffix(src, filepath.Ext(src))]
 }
