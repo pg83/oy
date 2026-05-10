@@ -278,15 +278,8 @@ func TestInvalidCharacter(t *testing.T) {
 	expectToken(t, l, TokenIdent, "PROGRAM", 1, 1)
 	expectToken(t, l, TokenLParen, "(", 1, 8)
 
-	_, err := l.NextToken()
-	if err == nil {
-		t.Error("Expected error for invalid character, got nil")
-	}
-
-	wantErr := "invalid character '$' at line 1:9"
-	if err.Error() != wantErr {
-		t.Errorf("Error = %v, want %v", err, wantErr)
-	}
+	expectToken(t, l, TokenIdent, "$test", 1, 9)
+	expectToken(t, l, TokenRParen, ")", 1, 14)
 }
 
 func TestUnterminatedString(t *testing.T) {

@@ -314,3 +314,114 @@ END()
 		t.Errorf("expected ModuleTypeLibrary, got %v", module.Type)
 	}
 }
+
+func TestParseYaMakeFile_WhenBlockSimple(t *testing.T) {
+	content := `PROGRAM()
+
+PEERDIR(test/lib) WHEN($VAR == yes)
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeProgram, "test")
+	if module == nil {
+		t.Fatal("expected non-nil module")
+	}
+
+	if len(module.ConditionalPeerdirs) != 1 {
+		t.Fatalf("expected 1 conditional PEERDIR, got %d", len(module.ConditionalPeerdirs))
+	}
+
+	cp := module.ConditionalPeerdirs[0]
+	if len(cp.Paths) != 1 {
+		t.Fatalf("expected 1 path in conditional PEERDIR, got %d", len(cp.Paths))
+	}
+
+	if cp.Paths[0] != "test/lib" {
+		t.Errorf("expected path 'test/lib', got '%s'", cp.Paths[0])
+	}
+
+	if cp.WhenClause == nil {
+		t.Fatal("expected non-nil WhenClause")
+	}
+
+	if cp.WhenClause.Condition != "$VAR == yes" {
+		t.Errorf("expected condition '$VAR == yes', got '%s'", cp.WhenClause.Condition)
+	}
+}
+
+func TestParseYaMakeFile_WhenBlockMultiplePaths(t *testing.T) {
+	content := `PROGRAM()
+
+PEERDIR(
+    lib/a
+    lib/b
+) WHEN($X == val)
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeProgram, "test")
+	if len(module.ConditionalPeerdirs) != 1 {
+		t.Fatalf("expected 1 conditional PEERDIR, got %d", len(module.ConditionalPeerdirs))
+	}
+
+	cp := module.ConditionalPeerdirs[0]
+	if len(cp.Paths) != 2 {
+		t.Fatalf("expected 2 paths in conditional PEERDIR, got %d", len(cp.Paths))
+	}
+
+	if cp.Paths[0] != "lib/a" {
+		t.Errorf("expected path 'lib/a', got '%s'", cp.Paths[0])
+	}
+
+	if cp.Paths[1] != "lib/b" {
+		t.Errorf("expected path 'lib/b', got '%s'", cp.Paths[1])
+	}
+}
+
+func TestParseYaMakeFile_MixedPeerdirs(t *testing.T) {
+	content := `PROGRAM()
+
+PEERDIR(lib/always)
+PEERDIR(lib/conditional) WHEN($FLAG == yes)
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeProgram, "test")
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("expected 1 unconditional dependency, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "lib/always" {
+		t.Errorf("expected dependency 'lib/always', got '%s'", module.Dependencies[0])
+	}
+
+	if len(module.ConditionalPeerdirs) != 1 {
+		t.Fatalf("expected 1 conditional PEERDIR, got %d", len(module.ConditionalPeerdirs))
+	}
+}
+
+func TestParseYaMakeFile_ComplexWhenCondition(t *testing.T) {
+	content := `PROGRAM()
+
+PEERDIR(lib/x) WHEN($A == val && $B == val2)
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeProgram, "test")
+	if len(module.ConditionalPeerdirs) != 1 {
+		t.Fatalf("expected 1 conditional PEERDIR, got %d", len(module.ConditionalPeerdirs))
+	}
+
+	cp := module.ConditionalPeerdirs[0]
+	if cp.WhenClause == nil {
+		t.Fatal("expected non-nil WhenClause")
+	}
+
+	if cp.WhenClause.Condition != "$A == val && $B == val2" {
+		t.Errorf("expected condition '$A == val && $B == val2', got '%s'", cp.WhenClause.Condition)
+	}
+}

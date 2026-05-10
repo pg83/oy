@@ -797,3 +797,628 @@ func TestResolveConditionalsWithComparison(t *testing.T) {
 		t.Error("Expected old_key property to be merged")
 	}
 }
+
+func TestResolveWhenBlocks_SimpleTrue(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeProgram,
+		SourcePath: "test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"lib/x"},
+				WhenClause: &WhenBlock{
+					Condition: "$VAR == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("VAR", "yes")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency after resolving WHEN with true condition, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "lib/x" {
+		t.Errorf("Expected dependency 'lib/x', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_SimpleFalse(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeProgram,
+		SourcePath: "test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"lib/x"},
+				WhenClause: &WhenBlock{
+					Condition: "$VAR == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("VAR", "no")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 0 {
+		t.Fatalf("Expected 0 dependencies after resolving WHEN with false condition, got %d", len(module.Dependencies))
+	}
+}
+
+func TestResolveWhenBlocks_MultipleConditions(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeProgram,
+		SourcePath: "test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"lib/a"},
+				WhenClause: &WhenBlock{
+					Condition: "$A == yes",
+				},
+			},
+			{
+				Paths: []string{"lib/b"},
+				WhenClause: &WhenBlock{
+					Condition: "$B == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("A", "yes")
+	vars.SetValue("B", "no")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency after resolving WHEN with mixed conditions, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "lib/a" {
+		t.Errorf("Expected dependency 'lib/a', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_StringComparison(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/malloc/jemalloc"},
+				WhenClause: &WhenBlock{
+					Condition: "$ALLOCATOR == J",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("ALLOCATOR", "J")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency after resolving WHEN with string comparison, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "library/cpp/malloc/jemalloc" {
+		t.Errorf("Expected dependency 'library/cpp/malloc/jemalloc', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_NilModule(t *testing.T) {
+	ResolveWhenBlocks(nil, nil, nil)
+}
+
+func TestResolveWhenBlocks_NoConditionalPeerdirs(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeProgram,
+		SourcePath: "test",
+	}
+
+	ctx := &BuildContext{}
+	vars := NewMemoryVariableSet()
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 0 {
+		t.Errorf("Expected 0 dependencies for module with no conditional PEERDIRs, got %d", len(module.Dependencies))
+	}
+}
+
+func TestResolveWhenBlocks_WithBuildContextLinux(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/linux_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/windows_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_WINDOWS == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{Platform: PlatformLinux, Arch: Arch64, Compiler: CompilerGCC}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("OS_LINUX", "yes")
+	vars.SetValue("OS_WINDOWS", "no")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency on Linux, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "library/cpp/linux_specific" {
+		t.Errorf("Expected 'library/cpp/linux_specific', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_WithBuildContextWindows(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/linux_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/windows_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_WINDOWS == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{Platform: PlatformWindows, Arch: Arch64, Compiler: CompilerMSVC}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("OS_LINUX", "no")
+	vars.SetValue("OS_WINDOWS", "yes")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency on Windows, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "library/cpp/windows_specific" {
+		t.Errorf("Expected 'library/cpp/windows_specific', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_WithBuildContextDarwin(t *testing.T) {
+	module := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/darwin_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_DARWIN == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/linux_specific"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+		},
+	}
+
+	ctx := &BuildContext{Platform: PlatformDarwin, Arch: Arch64, Compiler: CompilerClang}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("OS_DARWIN", "yes")
+	vars.SetValue("OS_LINUX", "no")
+
+	ResolveWhenBlocks(module, ctx, vars)
+
+	if len(module.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency on Darwin, got %d", len(module.Dependencies))
+	}
+
+	if module.Dependencies[0] != "library/cpp/darwin_specific" {
+		t.Errorf("Expected 'library/cpp/darwin_specific', got '%s'", module.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_WithArchContext(t *testing.T) {
+	ctx32 := &BuildContext{Platform: PlatformLinux, Arch: Arch32, Compiler: CompilerGCC}
+	vars32 := NewMemoryVariableSet()
+	vars32.SetValue("ARCH_TYPE_32", "yes")
+	vars32.SetValue("ARCH_TYPE_64", "no")
+
+	module32 := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/32bit_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$ARCH_TYPE_32 == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/64bit_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$ARCH_TYPE_64 == yes",
+				},
+			},
+		},
+	}
+
+	ResolveWhenBlocks(module32, ctx32, vars32)
+
+	if len(module32.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency on 32-bit, got %d", len(module32.Dependencies))
+	}
+
+	if module32.Dependencies[0] != "library/cpp/32bit_helper" {
+		t.Errorf("Expected 'library/cpp/32bit_helper', got '%s'", module32.Dependencies[0])
+	}
+
+	ctx64 := &BuildContext{Platform: PlatformLinux, Arch: Arch64, Compiler: CompilerGCC}
+	vars64 := NewMemoryVariableSet()
+	vars64.SetValue("ARCH_TYPE_32", "no")
+	vars64.SetValue("ARCH_TYPE_64", "yes")
+
+	module64 := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/32bit_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$ARCH_TYPE_32 == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/64bit_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$ARCH_TYPE_64 == yes",
+				},
+			},
+		},
+	}
+
+	ResolveWhenBlocks(module64, ctx64, vars64)
+
+	if len(module64.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency on 64-bit, got %d", len(module64.Dependencies))
+	}
+
+	if module64.Dependencies[0] != "library/cpp/64bit_helper" {
+		t.Errorf("Expected 'library/cpp/64bit_helper', got '%s'", module64.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_WithCompilerContext(t *testing.T) {
+	ctxGCC := &BuildContext{Platform: PlatformLinux, Arch: Arch64, Compiler: CompilerGCC}
+	varsGCC := NewMemoryVariableSet()
+	varsGCC.SetValue("GCC", "yes")
+	varsGCC.SetValue("CLANG", "no")
+
+	moduleGCC := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/gcc_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$GCC == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/clang_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$CLANG == yes",
+				},
+			},
+		},
+	}
+
+	ResolveWhenBlocks(moduleGCC, ctxGCC, varsGCC)
+
+	if len(moduleGCC.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency with GCC, got %d", len(moduleGCC.Dependencies))
+	}
+
+	if moduleGCC.Dependencies[0] != "library/cpp/gcc_helper" {
+		t.Errorf("Expected 'library/cpp/gcc_helper', got '%s'", moduleGCC.Dependencies[0])
+	}
+
+	ctxClang := &BuildContext{Platform: PlatformDarwin, Arch: Arch64, Compiler: CompilerClang}
+	varsClang := NewMemoryVariableSet()
+	varsClang.SetValue("GCC", "no")
+	varsClang.SetValue("CLANG", "yes")
+
+	moduleClang := &Module{
+		Type:       ModuleTypeLibrary,
+		SourcePath: "library/test",
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/gcc_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$GCC == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/clang_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$CLANG == yes",
+				},
+			},
+		},
+	}
+
+	ResolveWhenBlocks(moduleClang, ctxClang, varsClang)
+
+	if len(moduleClang.Dependencies) != 1 {
+		t.Fatalf("Expected 1 dependency with Clang, got %d", len(moduleClang.Dependencies))
+	}
+
+	if moduleClang.Dependencies[0] != "library/cpp/clang_helper" {
+		t.Errorf("Expected 'library/cpp/clang_helper', got '%s'", moduleClang.Dependencies[0])
+	}
+}
+
+func TestResolveWhenBlocks_WithIFELSEIFInteraction(t *testing.T) {
+	ctxLinux := &BuildContext{Platform: PlatformLinux, Arch: Arch64, Compiler: CompilerGCC}
+	varsLinux := NewMemoryVariableSet()
+	varsLinux.SetValue("OS_LINUX", "yes")
+	varsLinux.SetValue("OS_WINDOWS", "no")
+	varsLinux.SetValue("OS_DARWIN", "no")
+
+	moduleLinux := &Module{
+		Type:         ModuleTypeLibrary,
+		SourcePath:   "library/test",
+		Dependencies: []string{"base_dep"},
+		Conditionals: []*ConditionalBlock{
+			{
+				IfBranch: &ConditionalBranch{
+					Condition: "OS_LINUX",
+					Module: &Module{
+						Dependencies: []string{"linux_dep"},
+					},
+				},
+				ElseIfs: []*ConditionalBranch{
+					{
+						Condition: "OS_WINDOWS",
+						Module: &Module{
+							Sources: []string{"windows.cpp"},
+						},
+					},
+					{
+						Condition: "OS_DARWIN",
+						Module: &Module{
+							Sources: []string{"darwin.cpp"},
+						},
+					},
+				},
+			},
+		},
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/linux_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/windows_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_WINDOWS == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/darwin_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_DARWIN == yes",
+				},
+			},
+		},
+	}
+
+	result := ResolveConditionals(moduleLinux, ctxLinux, varsLinux)
+	ResolveWhenBlocks(result, ctxLinux, varsLinux)
+
+	if len(result.Dependencies) != 3 {
+		t.Errorf("Expected 3 dependencies (base, linux_dep, linux_helper), got %d", len(result.Dependencies))
+	}
+
+	expectedDeps := map[string]bool{
+		"base_dep":                 true,
+		"linux_dep":                true,
+		"library/cpp/linux_helper": true,
+	}
+	for _, dep := range result.Dependencies {
+		if !expectedDeps[dep] {
+			t.Errorf("Unexpected dependency: %s", dep)
+		}
+	}
+
+	ctxWindows := &BuildContext{Platform: PlatformWindows, Arch: Arch64, Compiler: CompilerMSVC}
+	varsWindows := NewMemoryVariableSet()
+	varsWindows.SetValue("OS_LINUX", "no")
+	varsWindows.SetValue("OS_WINDOWS", "yes")
+	varsWindows.SetValue("OS_DARWIN", "no")
+
+	moduleWindows := &Module{
+		Type:         ModuleTypeLibrary,
+		SourcePath:   "library/test",
+		Dependencies: []string{"base_dep"},
+		Conditionals: []*ConditionalBlock{
+			{
+				IfBranch: &ConditionalBranch{
+					Condition: "OS_LINUX",
+					Module: &Module{
+						Dependencies: []string{"linux_dep"},
+					},
+				},
+				ElseIfs: []*ConditionalBranch{
+					{
+						Condition: "OS_WINDOWS",
+						Module: &Module{
+							Sources: []string{"windows.cpp"},
+						},
+					},
+					{
+						Condition: "OS_DARWIN",
+						Module: &Module{
+							Sources: []string{"darwin.cpp"},
+						},
+					},
+				},
+			},
+		},
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/linux_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/windows_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_WINDOWS == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/darwin_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_DARWIN == yes",
+				},
+			},
+		},
+	}
+
+	resultWindows := ResolveConditionals(moduleWindows, ctxWindows, varsWindows)
+	ResolveWhenBlocks(resultWindows, ctxWindows, varsWindows)
+
+	if len(resultWindows.Sources) != 1 {
+		t.Errorf("Expected 1 source (windows.cpp), got %d", len(resultWindows.Sources))
+	}
+
+	if resultWindows.Sources[0] != "windows.cpp" {
+		t.Errorf("Expected 'windows.cpp', got '%s'", resultWindows.Sources[0])
+	}
+
+	if len(resultWindows.Dependencies) != 2 {
+		t.Errorf("Expected 2 dependencies (base, windows_helper), got %d", len(resultWindows.Dependencies))
+	}
+
+	expectedWindowsDeps := map[string]bool{
+		"base_dep":                   true,
+		"library/cpp/windows_helper": true,
+	}
+	for _, dep := range resultWindows.Dependencies {
+		if !expectedWindowsDeps[dep] {
+			t.Errorf("Unexpected dependency: %s", dep)
+		}
+	}
+
+	ctxDarwin := &BuildContext{Platform: PlatformDarwin, Arch: Arch64, Compiler: CompilerClang}
+	varsDarwin := NewMemoryVariableSet()
+	varsDarwin.SetValue("OS_LINUX", "no")
+	varsDarwin.SetValue("OS_WINDOWS", "no")
+	varsDarwin.SetValue("OS_DARWIN", "yes")
+
+	moduleDarwin := &Module{
+		Type:         ModuleTypeLibrary,
+		SourcePath:   "library/test",
+		Dependencies: []string{"base_dep"},
+		Conditionals: []*ConditionalBlock{
+			{
+				IfBranch: &ConditionalBranch{
+					Condition: "OS_LINUX",
+					Module: &Module{
+						Dependencies: []string{"linux_dep"},
+					},
+				},
+				ElseIfs: []*ConditionalBranch{
+					{
+						Condition: "OS_WINDOWS",
+						Module: &Module{
+							Sources: []string{"windows.cpp"},
+						},
+					},
+					{
+						Condition: "OS_DARWIN",
+						Module: &Module{
+							Sources: []string{"darwin.cpp"},
+						},
+					},
+				},
+			},
+		},
+		ConditionalPeerdirs: []*ConditionalPeerdir{
+			{
+				Paths: []string{"library/cpp/linux_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_LINUX == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/windows_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_WINDOWS == yes",
+				},
+			},
+			{
+				Paths: []string{"library/cpp/darwin_helper"},
+				WhenClause: &WhenBlock{
+					Condition: "$OS_DARWIN == yes",
+				},
+			},
+		},
+	}
+
+	resultDarwin := ResolveConditionals(moduleDarwin, ctxDarwin, varsDarwin)
+	ResolveWhenBlocks(resultDarwin, ctxDarwin, varsDarwin)
+
+	if len(resultDarwin.Sources) != 1 {
+		t.Errorf("Expected 1 source (darwin.cpp), got %d", len(resultDarwin.Sources))
+	}
+
+	if resultDarwin.Sources[0] != "darwin.cpp" {
+		t.Errorf("Expected 'darwin.cpp', got '%s'", resultDarwin.Sources[0])
+	}
+
+	if len(resultDarwin.Dependencies) != 2 {
+		t.Errorf("Expected 2 dependencies (base, darwin_helper), got %d", len(resultDarwin.Dependencies))
+	}
+
+	expectedDarwinDeps := map[string]bool{
+		"base_dep":                  true,
+		"library/cpp/darwin_helper": true,
+	}
+	for _, dep := range resultDarwin.Dependencies {
+		if !expectedDarwinDeps[dep] {
+			t.Errorf("Unexpected dependency: %s", dep)
+		}
+	}
+}

@@ -49,6 +49,7 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 	buildContext := be.createBuildContext()
 
 	resolvedModule := ResolveConditionals(mainModule, buildContext, NewMemoryVariableSet())
+	ResolveWhenBlocks(resolvedModule, buildContext, NewMemoryVariableSet())
 
 	if !EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
 		ThrowFmt("module excluded by BUILD_ONLY_IF condition: %s", mainModule.SourcePath)
@@ -178,6 +179,7 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
 
 		buildContext := be.createBuildContext()
 		resolvedModule := ResolveConditionals(module, buildContext, NewMemoryVariableSet())
+		ResolveWhenBlocks(resolvedModule, buildContext, NewMemoryVariableSet())
 
 		if EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
 			be.registry.Register(module.SourcePath, resolvedModule)

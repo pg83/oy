@@ -1,5 +1,9 @@
 package main
 
+import (
+	"strings"
+)
+
 // ApplyModuleFlags applies ENABLE and DISABLE directives from a module to the VariableSet.
 // ENABLE(flags) sets the flag to "yes", DISABLE(flags) sets the flag to "no".
 func ApplyModuleFlags(module *Module, vars VariableSet) {
@@ -34,12 +38,13 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 	ApplyModuleFlags(module, vars)
 
 	resultModule := &Module{
-		Type:         module.Type,
-		SourcePath:   module.SourcePath,
-		Dependencies: append([]string{}, module.Dependencies...),
-		Sources:      append([]string{}, module.Sources...),
-		Recursions:   append([]*RecurseDirective{}, module.Recursions...),
-		Properties:   make(map[string]string),
+		Type:                module.Type,
+		SourcePath:          module.SourcePath,
+		Dependencies:        append([]string{}, module.Dependencies...),
+		Sources:             append([]string{}, module.Sources...),
+		Recursions:          append([]*RecurseDirective{}, module.Recursions...),
+		Properties:          make(map[string]string),
+		ConditionalPeerdirs: append([]*ConditionalPeerdir{}, module.ConditionalPeerdirs...),
 	}
 
 	for k, v := range module.Properties {
@@ -174,4 +179,37 @@ func EvaluateBuildCondition(module *Module, ctx *BuildContext, vars VariableSet)
 	conditionResult := evaluator.Evaluate(conditionAST)
 
 	return !conditionResult
+}
+
+// ResolveWhenBlocks evaluates WHEN() conditions on conditional PEERDIR statements.
+// For each ConditionalPeerdir in the module, the WHEN condition is evaluated against
+// the provided build context and variable set. If the condition is true, the PEERDIR
+// paths are added to the module's dependencies. Resolution happens after module flags
+// are applied but before dependency resolution.
+func ResolveWhenBlocks(module *Module, ctx *BuildContext, vars VariableSet) {
+	if module == nil {
+		return
+	}
+
+	if len(module.ConditionalPeerdirs) == 0 {
+		return
+	}
+
+	evaluator := NewEvaluator(vars)
+
+	for _, cp := range module.ConditionalPeerdirs {
+		if cp.WhenClause == nil {
+			continue
+		}
+
+		conditionAST := ParseConditionExpression(cp.WhenClause.Condition)
+		if evaluator.Evaluate(conditionAST) {
+			for _, dep := range cp.Paths {
+				dep = strings.TrimSpace(dep)
+				if dep != "" {
+					module.AddDependency(dep)
+				}
+			}
+		}
+	}
 }
