@@ -16,6 +16,9 @@ const (
 	TokenAmpersandAmpersand
 	TokenPipePipe
 	TokenBang
+	TokenAnd
+	TokenOr
+	TokenNot
 	TokenEquals
 	TokenEqualsEquals
 	TokenLess
@@ -41,6 +44,12 @@ func (t TokenType) String() string {
 		return "||"
 	case TokenBang:
 		return "!"
+	case TokenAnd:
+		return "AND"
+	case TokenOr:
+		return "OR"
+	case TokenNot:
+		return "NOT"
 	case TokenEquals:
 		return "="
 	case TokenEqualsEquals:
@@ -214,7 +223,6 @@ func (l *Lexer) isKeyword(ident string) (TokenType, bool) {
 		"IF":                TokenIdent,
 		"ELSE":              TokenIdent,
 		"ELSEIF":            TokenIdent,
-		"NOT":               TokenIdent,
 		"ENDIF":             TokenIdent,
 		"LICENSE":           TokenIdent,
 		"VERSION":           TokenIdent,
@@ -305,6 +313,17 @@ func (l *Lexer) NextToken() (Token, error) {
 			startLine := l.line
 			startCol := l.col
 			ident := l.readIdent()
+
+			if ident == "AND" {
+				return Token{Type: TokenAnd, Value: "AND", Line: startLine, Col: startCol}, nil
+			}
+			if ident == "OR" {
+				return Token{Type: TokenOr, Value: "OR", Line: startLine, Col: startCol}, nil
+			}
+			if ident == "NOT" {
+				return Token{Type: TokenNot, Value: "NOT", Line: startLine, Col: startCol}, nil
+			}
+
 			return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
 		}
 

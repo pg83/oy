@@ -124,11 +124,15 @@ func TestParseConditionExpression_AndPrecedence(t *testing.T) {
 	}
 
 	if expr.Op != ExprOr {
-		t.Errorf("expected ExprOr (AND has higher precedence), got %v", expr.Op)
+		t.Errorf("expected ExprOr (lower precedence), got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
 	}
 
 	if expr.Args[0].Op != ExprAnd {
-		t.Errorf("expected first arg to be ExprAnd, got %v", expr.Args[0].Op)
+		t.Errorf("expected first arg to be ExprAnd (higher precedence), got %v", expr.Args[0].Op)
 	}
 }
 
@@ -217,6 +221,68 @@ func TestParseConditionExpression_TrailingWhitespace(t *testing.T) {
 
 	if expr.Ident != "OS_LINUX" {
 		t.Errorf("expected ident 'OS_LINUX', got '%s'", expr.Ident)
+	}
+}
+
+func TestParseConditionExpression_OrPrecedenceWithKeyword(t *testing.T) {
+	expr := ParseConditionExpression("GCC OR CLANG OR CLANG_CL")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprOr {
+		t.Errorf("expected ExprOr, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	left := expr.Args[0]
+	if left.Ident != "GCC" && left.Op != ExprOr {
+		t.Errorf("expected left to be 'GCC' or ExprOr, got %v", left)
+	}
+}
+
+func TestParseConditionExpression_NotKeyword(t *testing.T) {
+	expr := ParseConditionExpression("NOT OS_EMSCRIPTEN")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprNot {
+		t.Errorf("expected ExprNot, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "OS_EMSCRIPTEN" {
+		t.Errorf("expected ident 'OS_EMSCRIPTEN', got '%s'", expr.Args[0].Ident)
+	}
+}
+
+func TestParseConditionExpression_ArchOrArchComplex(t *testing.T) {
+	expr := ParseConditionExpression("ARCH_X86_64 OR ARCH_I386")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprOr {
+		t.Errorf("expected ExprOr, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "ARCH_X86_64" {
+		t.Errorf("expected ident 'ARCH_X86_64', got '%s'", expr.Args[0].Ident)
+	}
+
+	if expr.Args[1].Ident != "ARCH_I386" {
+		t.Errorf("expected ident 'ARCH_I386', got '%s'", expr.Args[1].Ident)
 	}
 }
 

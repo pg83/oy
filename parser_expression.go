@@ -65,7 +65,7 @@ func (p *exprParser) parseOrExpr() *ExpressionAST {
 
 	for {
 		tok := p.peek()
-		if (tok.Type == TokenIdent && (tok.Value == "OR")) || tok.Type == TokenPipePipe {
+		if tok.Type == TokenPipePipe || tok.Type == TokenOr {
 			p.advance()
 			right := p.parseAndExpr()
 			left = &ExpressionAST{
@@ -85,7 +85,7 @@ func (p *exprParser) parseAndExpr() *ExpressionAST {
 
 	for {
 		tok := p.peek()
-		if (tok.Type == TokenIdent && (tok.Value == "AND")) || tok.Type == TokenAmpersandAmpersand {
+		if tok.Type == TokenAmpersandAmpersand || tok.Type == TokenAnd {
 			p.advance()
 			right := p.parseNotExpr()
 			left = &ExpressionAST{
@@ -103,7 +103,7 @@ func (p *exprParser) parseAndExpr() *ExpressionAST {
 func (p *exprParser) parseNotExpr() *ExpressionAST {
 	tok := p.peek()
 
-	if (tok.Type == TokenIdent && (tok.Value == "NOT")) || tok.Type == TokenBang {
+	if tok.Type == TokenBang || tok.Type == TokenNot {
 		p.advance()
 		operand := p.parseNotExpr()
 		return &ExpressionAST{

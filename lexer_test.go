@@ -259,6 +259,12 @@ func TestTokenTypeString(t *testing.T) {
 		{TokenLParen, "LPAREN"},
 		{TokenRParen, "RPAREN"},
 		{TokenString, "STRING"},
+		{TokenAmpersandAmpersand, "&&"},
+		{TokenPipePipe, "||"},
+		{TokenBang, "!"},
+		{TokenAnd, "AND"},
+		{TokenOr, "OR"},
+		{TokenNot, "NOT"},
 	}
 
 	for _, tt := range tests {
@@ -449,4 +455,112 @@ func TestFlagsWithCommas(t *testing.T) {
 			expectEOF(t, l)
 		})
 	}
+}
+
+func TestLogicalOperators(t *testing.T) {
+	tests := []struct {
+		input     string
+		tokenType TokenType
+		value     string
+	}{
+		{"AND", TokenAnd, "AND"},
+		{"OR", TokenOr, "OR"},
+		{"NOT", TokenNot, "NOT"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			expectToken(t, l, tt.tokenType, tt.value, 1, 1)
+			expectEOF(t, l)
+		})
+	}
+}
+
+func TestLogicalOperatorExpressions(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		tokens []struct {
+			tokenType TokenType
+			value     string
+		}
+	}{
+		{
+			name:  "A AND B",
+			input: "A AND B",
+			tokens: []struct {
+				tokenType TokenType
+				value     string
+			}{
+				{TokenIdent, "A"},
+				{TokenAnd, "AND"},
+				{TokenIdent, "B"},
+			},
+		},
+		{
+			name:  "A OR B",
+			input: "A OR B",
+			tokens: []struct {
+				tokenType TokenType
+				value     string
+			}{
+				{TokenIdent, "A"},
+				{TokenOr, "OR"},
+				{TokenIdent, "B"},
+			},
+		},
+		{
+			name:  "NOT A",
+			input: "NOT A",
+			tokens: []struct {
+				tokenType TokenType
+				value     string
+			}{
+				{TokenNot, "NOT"},
+				{TokenIdent, "A"},
+			},
+		},
+		{
+			name:  "A AND B OR C",
+			input: "A AND B OR C",
+			tokens: []struct {
+				tokenType TokenType
+				value     string
+			}{
+				{TokenIdent, "A"},
+				{TokenAnd, "AND"},
+				{TokenIdent, "B"},
+				{TokenOr, "OR"},
+				{TokenIdent, "C"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			for i, expected := range tt.tokens {
+				tok := Throw2(l.NextToken())
+				if tok.Type != expected.tokenType {
+					t.Errorf("Token %d: type = %v, want %v", i, tok.Type, expected.tokenType)
+				}
+				if tok.Value != expected.value {
+					t.Errorf("Token %d: value = %q, want %q", i, tok.Value, expected.value)
+				}
+			}
+			expectEOF(t, l)
+		})
+	}
+}
+
+func TestLogicalOperatorsNotIdentifiers(t *testing.T) {
+	input := "AND OR NOT"
+
+	l := NewLexer(input)
+
+	expectToken(t, l, TokenAnd, "AND", 1, 1)
+	expectToken(t, l, TokenOr, "OR", 1, 5)
+	expectToken(t, l, TokenNot, "NOT", 1, 8)
+	expectEOF(t, l)
 }
