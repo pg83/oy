@@ -58,7 +58,7 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 
 	be.processPeerDependencies(resolvedModule)
 
-	graphBuilder := NewGraphBuilder(be.registry, be.ctx)
+	graphBuilder := NewGraphBuilderWithSourceRoot(be.registry, be.ctx, be.sourceRoot)
 	graph := graphBuilder.BuildGraphFromModules(resolvedModule)
 
 	return graph
