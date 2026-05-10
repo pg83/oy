@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -111,7 +112,40 @@ func (p *exprParser) parseNotExpr() *ExpressionAST {
 		}
 	}
 
-	return p.parsePrimary()
+	return p.parseComparisonExpr()
+}
+
+func (p *exprParser) parseComparisonExpr() *ExpressionAST {
+	left := p.parsePrimary()
+
+	for {
+		tok := p.peek()
+		switch tok.Type {
+		case TokenEqualsEquals:
+			p.advance()
+			right := p.parsePrimary()
+			left = &ExpressionAST{
+				Op:   ExprEqual,
+				Args: []*ExpressionAST{left, right},
+			}
+		case TokenLess:
+			p.advance()
+			right := p.parsePrimary()
+			left = &ExpressionAST{
+				Op:   ExprLessThan,
+				Args: []*ExpressionAST{left, right},
+			}
+		case TokenGreater:
+			p.advance()
+			right := p.parsePrimary()
+			left = &ExpressionAST{
+				Op:   ExprGreaterThan,
+				Args: []*ExpressionAST{left, right},
+			}
+		default:
+			return left
+		}
+	}
 }
 
 func (p *exprParser) parsePrimary() *ExpressionAST {
@@ -132,7 +166,19 @@ func (p *exprParser) parsePrimary() *ExpressionAST {
 		}
 	}
 
-	ThrowFmt("syntax error at line %d:%d: expected identifier or '(', got %s", tok.Line, tok.Col, tok.Type)
+	if tok.Type == TokenNumber {
+		num := p.advance()
+		value, err := strconv.ParseFloat(num.Value, 64)
+		if err != nil {
+			ThrowFmt("invalid number %q at line %d:%d", num.Value, num.Line, num.Col)
+		}
+		return &ExpressionAST{
+			Op:     ExprNumber,
+			Number: value,
+		}
+	}
+
+	ThrowFmt("syntax error at line %d:%d: expected identifier, number, or '(', got %s", tok.Line, tok.Col, tok.Type)
 	return nil
 }
 
