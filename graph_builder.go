@@ -226,6 +226,17 @@ func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[st
 		nodes = append(nodes, jsNode)
 	}
 
+	r6NodesCreated := make(map[string]bool)
+	for _, src := range module.Sources {
+		if isRagel6Source(src) && !r6NodesCreated[src] {
+			r6Node := gb.createArchAgnosticR6Node(module, src)
+			if r6Node != nil {
+				nodes = append(nodes, r6Node)
+			}
+			r6NodesCreated[src] = true
+		}
+	}
+
 	platformContexts := NewPlatformContexts(gb.ctx)
 
 	for _, platformCtx := range platformContexts {
@@ -273,14 +284,20 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	}
 
 	for _, src := range module.Sources {
+		var compileSrc string = src
+
+		if isRagel6Source(src) {
+			compileSrc = "_" + src + ".cpp"
+		}
+
 		nodeType := gb.determineCompileNodeTypeWithArch(module, src, platformCtx.arch)
 
 		switch nodeType {
 		case "CC":
-			ccNode := gb.createCCNode(module, src, platformCtx)
+			ccNode := gb.createCCNode(module, compileSrc, platformCtx)
 			gb.logNodeCreation(module, platformCtx.arch, "CC", src, ccNode.UID)
 			nodes = append(nodes, ccNode)
-			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
+			objOutput := gb.platformObjectOutput(module, compileSrc, platformCtx.arch)
 			objectOutputs = append(objectOutputs, objOutput)
 		case "AS":
 			asNode := gb.createASNode(module, src, platformCtx)
@@ -293,13 +310,6 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 			gb.logNodeCreation(module, platformCtx.arch, "JS", src, jsNode.UID)
 			nodes = append(nodes, jsNode)
 			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
-			objectOutputs = append(objectOutputs, objOutput)
-		case "R6":
-			r6Node := gb.createR6Node(module, src, platformCtx)
-			gb.logNodeCreation(module, platformCtx.arch, "R6", src, r6Node.UID)
-			nodes = append(nodes, r6Node)
-			outputSrc := strings.Replace(src, ".rl6", ".cpp", 1)
-			objOutput := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, outputSrc+".o")
 			objectOutputs = append(objectOutputs, objOutput)
 		case "CP":
 			cpNode := gb.createCPNode(module, src, platformCtx)
@@ -753,6 +763,51 @@ func (gb *GraphBuilder) generateR6Command(
 		outputPath,
 		gb.sourceInput(module, src),
 	}
+}
+
+func (gb *GraphBuilder) createArchAgnosticR6Node(
+	module *Module,
+	src string,
+) *GraphNode {
+	r6UIDKey := fmt.Sprintf("%s:R6:both:%s", module.SourcePath, src)
+
+	node := NewGraphNode(*gb.ctx)
+
+	node.UID = NewUID([]byte(r6UIDKey))
+	node.SelfUID = NewUID([]byte(r6UIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(r6UIDKey + "_stats"))
+
+	node.Platform = "both"
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: "cpp",
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_", src+".cpp")
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateR6Command(module, src),
+			Env:     map[string]string{},
+		},
+	}
+
+	node.Inputs = []string{
+		"$(BUILD_ROOT)/contrib/tools/ragel6/ragel6",
+		gb.sourceInput(module, src),
+	}
+	node.Outputs = []string{outputPath}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(r6UIDKey + "_kv")),
+		"p":   "R6",
+		"pc":  "yellow",
+	}
+
+	return node
 }
 
 func (gb *GraphBuilder) createCPNode(
