@@ -26,16 +26,20 @@ const (
 // comparison operators (<, >, ==), and numeric literals.
 // The parser (not yet implemented) populates these structures from condition strings.
 type ExpressionAST struct {
-	Op     ExprOp
-	Args   []*ExpressionAST
-	Ident  string
-	Number float64
+	Op         ExprOp
+	Args       []*ExpressionAST
+	Ident      string
+	Number     float64
+	SourceText string
 }
 
 // Evaluator evaluates ExpressionAST nodes against a VariableSet, resolving
 // identifiers to boolean values and applying logical operators.
 type Evaluator struct {
-	vars VariableSet
+	vars        VariableSet
+	exprContext string
+	modulePath  string
+	condContext string
 }
 
 // NewEvaluator creates an Evaluator bound to the provided VariableSet.
@@ -43,6 +47,12 @@ func NewEvaluator(vars VariableSet) *Evaluator {
 	return &Evaluator{
 		vars: vars,
 	}
+}
+
+// NewEvaluatorWithContext creates an Evaluator with context for diagnostic logging.
+func SetEvaluatorContext(eval *Evaluator, context, modulePath string) {
+	eval.condContext = context
+	eval.modulePath = modulePath
 }
 
 // Evaluate computes the boolean value of an expression AST. For ExprIdent,
@@ -63,7 +73,15 @@ func (e *Evaluator) Evaluate(expr *ExpressionAST) bool {
 		if strings.HasPrefix(varIdent, "$") {
 			varIdent = varIdent[1:]
 		}
-		return e.vars.IsTrue(varIdent)
+		varValue := ""
+		if val, hasVal := e.vars.GetValue(varIdent); hasVal {
+			varValue = val
+		}
+		result := e.vars.IsTrue(varIdent)
+		if tl := GetGlobalTraversalLogger(); tl != nil && tl.IsEvalTracingEnabled() {
+			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result)
+		}
+		return result
 
 	case ExprAnd:
 		if len(expr.Args) == 0 {
@@ -169,6 +187,14 @@ func (e *Evaluator) tryEvalCanCastToNumber(expr *ExpressionAST) (float64, bool) 
 			varIdent = varIdent[1:]
 		}
 		val, ok := e.vars.GetValue(varIdent)
+		varValue := ""
+		if ok {
+			varValue = val
+		}
+		result := e.vars.IsTrue(varIdent)
+		if tl := GetGlobalTraversalLogger(); tl != nil && tl.IsEvalTracingEnabled() {
+			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result)
+		}
 		if !ok {
 			return 0, true
 		}

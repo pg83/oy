@@ -37,6 +37,11 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 
 	ApplyModuleFlags(module, vars)
 
+	modulePath := module.SourcePath
+	if modulePath == "" {
+		modulePath = "<unknown>"
+	}
+
 	resultModule := &Module{
 		Type:                module.Type,
 		SourcePath:          module.SourcePath,
@@ -57,6 +62,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 		var selectedModule *Module
 
 		evaluator := NewEvaluator(vars)
+		SetEvaluatorContext(evaluator, "IF", modulePath)
 
 		conditionAST := ParseConditionExpression(block.IfBranch.Condition)
 		if evaluator.Evaluate(conditionAST) {
@@ -66,6 +72,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 			selected := false
 
 			for _, elseifBranch := range block.ElseIfs {
+				SetEvaluatorContext(evaluator, "ELSEIF", modulePath)
 				elseifAST := ParseConditionExpression(elseifBranch.Condition)
 				if evaluator.Evaluate(elseifAST) {
 					selectedModule = elseifBranch.Module
@@ -175,7 +182,13 @@ func EvaluateBuildCondition(module *Module, ctx *BuildContext, vars VariableSet)
 		return true
 	}
 
+	modulePath := module.SourcePath
+	if modulePath == "" {
+		modulePath = "<unknown>"
+	}
+
 	evaluator := NewEvaluator(vars)
+	SetEvaluatorContext(evaluator, "BUILD_ONLY_IF", modulePath)
 	conditionAST := ParseConditionExpression(module.BuildCondition.Expression)
 
 	conditionResult := evaluator.Evaluate(conditionAST)
@@ -197,7 +210,13 @@ func ResolveWhenBlocks(module *Module, ctx *BuildContext, vars VariableSet) {
 		return
 	}
 
+	modulePath := module.SourcePath
+	if modulePath == "" {
+		modulePath = "<unknown>"
+	}
+
 	evaluator := NewEvaluator(vars)
+	SetEvaluatorContext(evaluator, "WHEN", modulePath)
 
 	for _, cp := range module.ConditionalPeerdirs {
 		if cp.WhenClause == nil {

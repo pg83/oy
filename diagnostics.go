@@ -1,5 +1,26 @@
 package main
 
+// diagnostics.go provides diagnostic logging for ymake build process.
+// Use --diag-peerdir flag to enable PEERDIR traversal diagnostics.
+// Use --diag-eval flag to enable variable evaluation diagnostics in conditionals.
+//
+// Variable evaluation diagnostics (--diag-eval):
+// - Logs all variable lookups during IF/ELSEIF/BUILD_ONLY_IF/WHEN evaluation
+// - Shows variable name, value, boolean result, and original expression
+// - Helps debug conditional logic and understands which variables are being tested
+//
+// Example output:
+// ======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========
+// Total variable evaluations: 78
+// Evaluations resulting in true: 18 (23.1%)
+//
+// --- Variable Evaluation Details ---
+//   [IF] tools/archiver: MSVC -> "false" => false (expr: MSVC)
+//   [IF] tools/archiver: MUSL -> "yes" => true (expr: MUSL)
+//   [BUILD_ONLY_IF] util/charset: OS_LINUX -> "true" => true (expr: OS_LINUX)
+//   [WHEN] util: PREBUILT -> "no" => false (expr: PREBUILT)
+// ========================= END EVAL SUMMARY ========================
+
 import (
 	"fmt"
 	"strings"
@@ -9,10 +30,12 @@ import (
 type TraversalLogger struct {
 	mu                 sync.Mutex
 	enabled            bool
+	evalTracingEnabled bool
 	peerdirResolves    []PeerdirResolution
 	moduleLoads        []ModuleLoad
 	registryLookups    []RegistryLookup
 	unreachableModules map[string]bool
+	evalVarTraces      []EvalVarTrace
 }
 
 type PeerdirResolution struct {
@@ -35,6 +58,15 @@ type RegistryLookup struct {
 	InModule string
 }
 
+type EvalVarTrace struct {
+	VariableName  string
+	VariableValue string
+	Result        bool
+	Context       string
+	ModulePath    string
+	Expression    string
+}
+
 var globalLogger *TraversalLogger
 
 func SetGlobalTraversalLogger(logger *TraversalLogger) {
@@ -50,6 +82,13 @@ func (tl *TraversalLogger) IsEnabled() bool {
 		return false
 	}
 	return tl.enabled
+}
+
+func (tl *TraversalLogger) IsEvalTracingEnabled() bool {
+	if tl == nil {
+		return false
+	}
+	return tl.evalTracingEnabled
 }
 
 func (tl *TraversalLogger) LogPeerdirResolution(fromModule, toPath string, resolved bool, foundModule string) {
@@ -69,6 +108,23 @@ func (tl *TraversalLogger) LogPeerdirResolution(fromModule, toPath string, resol
 	if !resolved && foundModule == "" {
 		tl.unreachableModules[toPath] = true
 	}
+}
+
+func (tl *TraversalLogger) LogEvalVar(varName, varValue, context, modulePath, expression string, result bool) {
+	if !tl.IsEnabled() || !tl.IsEvalTracingEnabled() {
+		return
+	}
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+
+	tl.evalVarTraces = append(tl.evalVarTraces, EvalVarTrace{
+		VariableName:  varName,
+		VariableValue: varValue,
+		Result:        result,
+		Context:       context,
+		ModulePath:    modulePath,
+		Expression:    expression,
+	})
 }
 
 func (tl *TraversalLogger) LogModuleLoad(modulePath, fromParent string, success bool, reason string) {
@@ -139,6 +195,34 @@ func (tl *TraversalLogger) OutputSummary() {
 		fmt.Println()
 	}
 
+	if tl.IsEvalTracingEnabled() && len(tl.evalVarTraces) > 0 {
+		fmt.Println("\n======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========")
+
+		successCount := 0
+		for _, ev := range tl.evalVarTraces {
+			if ev.Result {
+				successCount++
+			}
+		}
+		fmt.Printf("Total variable evaluations: %d\n", len(tl.evalVarTraces))
+		fmt.Printf("Evaluations resulting in true: %d (%.1f%%)\n", successCount, float64(successCount)*100/float64(len(tl.evalVarTraces)))
+
+		fmt.Println("\n--- Variable Evaluation Details ---")
+		for _, ev := range tl.evalVarTraces {
+			valueStr := ev.VariableValue
+			if valueStr == "" {
+				valueStr = "(unset)"
+			}
+			fmt.Printf("  [%s] %s: %s -> \"%s\" => %v", ev.Context, ev.ModulePath, ev.VariableName, valueStr, ev.Result)
+			if ev.Expression != "" {
+				fmt.Printf(" (expr: %s)", ev.Expression)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("======================== END EVAL SUMMARY ========================")
+	}
+
 	fmt.Println("======================== END SUMMARY ========================")
 }
 
@@ -156,9 +240,10 @@ func (tl *TraversalLogger) GetUnreachableModules() []string {
 	return modules
 }
 
-func NewTraversalLogger(enabled bool) *TraversalLogger {
+func NewTraversalLogger(enabled bool, evalTracingEnabled bool) *TraversalLogger {
 	return &TraversalLogger{
 		enabled:            enabled,
+		evalTracingEnabled: evalTracingEnabled,
 		unreachableModules: make(map[string]bool),
 	}
 }

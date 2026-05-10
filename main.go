@@ -24,7 +24,9 @@ func main() {
 			fmt.Printf("Usage: ymake [flags] <target-path>\n")
 			fmt.Printf("Example: ymake --musl tools/archiver\n")
 			fmt.Printf("Flags:\n")
-			fmt.Printf("  --benchmark   Run performance benchmark (multiple iterations)\n")
+			fmt.Printf("  --benchmark     Run performance benchmark (multiple iterations)\n")
+			fmt.Printf("  --diag-peerdir  Log PEERDIR traversal diagnostics\n")
+			fmt.Printf("  --diag-eval     Log variable evaluation diagnostics in conditionals\n")
 			os.Exit(1)
 		}
 
@@ -33,8 +35,8 @@ func main() {
 		ctx := buildParseContext(result, resolvedTarget)
 
 		var diag *TraversalLogger
-		if result.DiagPeerdir {
-			diag = NewTraversalLogger(true)
+		if result.DiagPeerdir || result.DiagEval {
+			diag = NewTraversalLogger(true, result.DiagEval)
 			SetGlobalTraversalLogger(diag)
 		}
 		defer func() {
@@ -106,7 +108,7 @@ func isCLIFlagArg(arg string) bool {
 	}
 
 	switch arg {
-	case "lex", "-G", "--graph", "--musl", "--benchmark", "--diag-peerdir":
+	case "lex", "-G", "--graph", "--musl", "--benchmark", "--diag-peerdir", "--diag-eval":
 		return true
 	}
 
