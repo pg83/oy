@@ -372,10 +372,9 @@ func TestJoinSrcsNodeInputs(t *testing.T) {
 
 	registry.Register("util/charset", module)
 	gb := NewGraphBuilder(registry, ctx)
-	platformCtx := PlatformAwareContext{ctx: ctx, arch: PlatformAARCH64}
 
 	jsd := module.JoinSrcsDirectives[0]
-	jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
+	jsNode := gb.createJoinSrcsNode(module, jsd)
 
 	if jsNode == nil {
 		t.Fatal("createJoinSrcsNode returned nil")
