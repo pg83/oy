@@ -559,7 +559,7 @@ func (gb *GraphBuilder) createR6Node(
 		ModuleType: gb.mapModuleTypeToString(module.Type),
 	}
 
-	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".cpp")
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_", src+".cpp")
 
 	node.Cmds = []Command{
 		{
@@ -588,7 +588,7 @@ func (gb *GraphBuilder) generateR6Command(
 	module *Module,
 	src string,
 ) []string {
-	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".cpp")
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, "_", src+".cpp")
 
 	return []string{
 		"$(BUILD_ROOT)/contrib/tools/ragel6/ragel6",

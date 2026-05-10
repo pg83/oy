@@ -142,15 +142,15 @@ func TestCreateR6Node(t *testing.T) {
 		t.Errorf("Expected -CT0 flag, got '%s'", cmdArgs[1])
 	}
 
-	if !strings.Contains(cmdArgs[5], "parser.rl6.cpp") {
-		t.Errorf("Expected .cpp output extension, got '%s'", cmdArgs[5])
+	if cmdArgs[5] != "$(BUILD_ROOT)/util/_/datetime/parser.rl6.cpp" {
+		t.Errorf("Expected .cpp output path, got '%s'", cmdArgs[5])
 	}
 
 	if !strings.Contains(cmdArgs[6], "parser.rl6") {
 		t.Errorf("Expected .rl6 input, got '%s'", cmdArgs[6])
 	}
 
-	expectedOutput := "$(BUILD_ROOT)/util/datetime/parser.rl6.cpp"
+	expectedOutput := "$(BUILD_ROOT)/util/_/datetime/parser.rl6.cpp"
 	if r6Node.Outputs[0] != expectedOutput {
 		t.Errorf("Expected output '%s', got '%s'", expectedOutput, r6Node.Outputs[0])
 	}
