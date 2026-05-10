@@ -189,7 +189,109 @@ A robust implementation must not key nodes only by `module_dir`: once full execu
 
 ## Performance
 
-Current executable measurement command:
+### Manual Benchmark Reporting
+
+The `--benchmark` flag provides ad-hoc performance measurement for graph generation, capturing hardware and runtime metadata for reproducible comparisons against the 1-second acceptance target.
+
+#### Benchmark Flag Usage
+
+```bash
+go run . --benchmark <target-path>
+```
+
+Example:
+```bash
+$ go run . --benchmark /home/pg/monorepo/yatool_orig/tools/archiver
+Building graph for tools/archiver from /home/pg/monorepo/yatool_orig...
+Benchmark results: median 531µs, 5 runs, 12 nodes
+Successfully generated 12 graph nodes
+```
+
+#### What It Does
+
+The benchmark flag executes graph generation multiple times:
+
+1. **Runs 5 iterations** (hardcoded in main.go line 36)
+2. **Calls `MeasureGraphGeneration`** which captures performance metadata:
+   - Individual run durations and node counts
+   - Median wall time calculation
+   - Hardware information: CPU model, core count, RAM
+   - Runtime information: OS/kernel, Go version, commit hash
+3. **Displays summary**: median duration, run count, and node count
+4. **Completes graph generation** as normal for any subsequent JSON output
+
+#### PerformanceReport Structure
+
+The `MeasureGraphGeneration` function returns a `PerformanceReport` struct:
+
+```go
+type PerformanceReport struct {
+    Runs      []PerformanceRun  // Individual run durations and node counts
+    Median    time.Duration     // Median wall time
+    Commit    string            // Git commit hash
+    GoVersion string            // Go runtime version
+    OSKernel  string            // uname -a output
+    CPU       string            // CPU model from /proc/cpuinfo
+    Cores     int               // Number of CPU cores
+    RAM       string            // Total RAM from /proc/meminfo
+}
+
+type PerformanceRun struct {
+    Duration  time.Duration  // Wall time for this run
+    NodeCount int            // Number of graph nodes generated
+}
+```
+
+Metadata collection uses best-effort fallbacks for missing information (e.g., returns "unknown" if `/proc/cpuinfo` is unavailable).
+
+#### Measurement Methods
+
+Three distinct performance measurement methods are available:
+
+1. **Manual benchmark** (`--benchmark` flag)
+   - Uses `MeasureGraphGeneration` directly
+   - 5 hardcoded runs (configurable in main.go line 36)
+   - Captures full hardware/runtime metadata
+   - Printed via main.go
+   - Includes compile overhead from `go run`
+
+2. **Automated test** (`TestGraphGenerationPerformance`)
+   - Uses `MeasureGraphGeneration` inside test harness
+   - 3 minimum runs (configurable in test)
+   - No compile overhead (in-process)
+   - Enforces sub-second target in CI
+   - Logs all metadata to test output
+
+3. **Standard benchmark** (`BenchmarkFullGraphGenerationToolsArchiver`)
+   - Standard Go testing benchmark with `b.N` iterations
+   - Designed for profiling-driven optimization
+   - No median calculation (uses Go benchmark statistics)
+
+#### When to Use Each Method
+
+- **Manual `--benchmark`**: Quick ad-hoc performance checks, CI manual gates, tracking performance across commits
+- **Test harness** (`TestGraphGenerationPerformance`): Automated CI validation, sub-second enforcement, continuous performance regression detection
+- **Standard benchmark** (`BenchmarkFullGraphGenerationToolsArchiver`): Detailed profiling, profiling-driven optimization work
+
+#### Best Practices
+
+- **Use warm runs**: The multiple-run approach reduces cache effects from first-run initialization
+- **Record hardware metadata**: Report includes CPU, cores, RAM, OS/kernel, Go version, and commit hash for reproducibility
+- **Track median time**: Median is used rather than mean to reduce outlier impact (e.g., from system load)
+- **Compare against target**: The 1-second acceptance target is defined in GOALS.md
+- **Use consistent target paths**: Performance comparisons require the exact same target path for reproducibility
+- **Report full context**: When sharing performance results, include all metadata fields from the `PerformanceReport`
+
+#### Implementation Details
+
+- The `--benchmark` flag is defined in `parse_flags.go` lines 97-99
+- Benchmark execution flow is in `main.go` lines 35-43
+- `MeasureGraphGeneration` function implementation in `performance.go` lines 29-62
+- The implementation ensures odd number of runs (minimum 3) for proper median calculation
+
+### Legacy Manual Measurement
+
+Current executable measurement command (without `--benchmark`):
 
 ```bash
 go run . -G --graph-file=/tmp/oy-sg.json /home/pg/monorepo/yatool_orig/tools/archiver
@@ -203,7 +305,7 @@ Measure median wall time from 3 warm runs:
 
 Record the CPU model, core count, RAM, storage if relevant, OS/kernel, `go version`, and commit hash with performance results.
 
-This manual command uses `go run`, so it includes compile overhead. The automated performance harness measures in-process generator time via `BuildDependencyGraph` and reports median duration with hardware/runtime metadata.
+This legacy manual command uses `go run`, so it includes compile overhead. The automated performance harness and the `--benchmark` flag both measure in-process generator time via `BuildDependencyGraph` and report median duration with hardware/runtime metadata.
 
 ## Test Coverage
 
