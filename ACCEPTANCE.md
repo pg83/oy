@@ -75,6 +75,101 @@ The current implementation generates a module-level graph, currently 12 nodes fo
 
 Final completion requires the equality test to fail on any mismatch rather than skip the node-count and structural gap.
 
+## Node Type Definitions
+
+Reference `/home/pg/monorepo/yatool_orig/sg.json` defines 7 execution node types:
+
+| Type  | KV.p   | Count | Description              | Color       |
+|-------|--------|-------|--------------------------|-------------|
+| CC    | "CC"   | 3571  | C/C++ compilation        | green       |
+| AS    | "AS"   | 83    | Assembly codegen         | light-green |
+| AR    | "AR"   | 48    | Static library archiving | light-red   |
+| JS    | "JS"   | 23    | Python source generation | magenta     |
+| LD    | "LD"   | 3     | Executable linking       | light-blue  |
+| R6    | "R6"   | 1     | Ragel6 codegen           | yellow      |
+| CP    | "CP"   | 1     | File copy operation      | light-cyan  |
+
+Reference catalog with full specifications: `REFERENCE_NODE_CATALOG.md`
+
+### CC Node (Compile)
+- 1 command: clang/clang++ with --target, --march, --sysroot flags
+- Output: .c.o or .cpp.o in $(BUILD_ROOT)/<module>/
+- Inputs: All transitive headers (100-1000+ per node)
+- Deps: 0-1 (rare compile deps)
+
+### AS Node (Assembly)
+- 1 command: yasm or clang assembly
+- Output: .S.o in $(BUILD_ROOT)/<module>/
+- Subtypes: yasm (25), clang assembly (58)
+
+### AR Node (Archive)
+- 1 command: python3 link_lib.py with llvm-ar
+- Output: lib<module>.a in $(BUILD_ROOT)/<module>/
+- Inputs: All .o files from module compilation
+- Deps: All compile node UIDs for the module
+
+### JS Node (JavaScript Generation)
+- 1 command: python3 gen_join_srcs.py
+- Output: Generated .cpp source file
+- Inputs: Source template files (up to 941 per node)
+
+### LD Node (Link)
+- 4 commands in sequence:
+  1. python3 vcs_info.py (generate version.c)
+  2. clang (compile version.c)
+  3. python3 link_exe.py (link executable)
+  4. python3 fs_tools.py (install executable)
+- Output: Executable in $(BUILD_ROOT)/<module>/
+- Deps: All archive node UIDs from PEERDIR dependencies
+
+### R6 Node (Ragel6)
+- 1 command: ragel6 codegen
+- Output: Generated source file
+
+### CP Node (Copy)
+- 1 command: python3 fs_tools.py copy
+- Output: Copied file
+
+## Validation Criteria for Node Types
+
+Generated graph must match reference structure:
+
+1. **Node count**: Exactly 3730
+   - CC: 3571, AS: 83, AR: 48, JS: 23, LD: 3, R6: 1, CP: 1
+
+2. **Platform distribution**: aarch64: 1933, x86_64: 1797
+
+3. **Module distribution**: Top 5 modules match reference percentages
+
+4. **Command structure**:
+   - CC/AS/AR/JS/R6/CP: Exactly 1 command
+   - LD: Exactly 4 commands in correct sequence
+
+5. **Node attributes** (per node type):
+   - KV.p, KV.pc, KV.show_out values match reference
+   - target_properties: module_dir, module_lang, module_type
+   - platform, requirements, sandboxing
+   - env: ARCADIA_ROOT_DISTBUILD, CPATH, DYLD_LIBRARY_PATH, LIBRARY_PATH, SDKROOT
+
+6. **Input arrays**: Include all transitive headers (not just source files)
+
+7. **UID generation**: Can differ (hash-based acceptance)
+
+## Implementation Status
+
+| Node Type | Status | Notes |
+|-----------|--------|-------|
+| CC        | ❌ Not implemented | Module-level nodes only |
+| AS        | ❌ Not implemented | No support |
+| AR        | ❌ Not implemented | Module-level nodes only |
+| JS        | ❌ Not implemented | No support |
+| LD        | ❌ Not implemented | Module-level nodes only |
+| R6        | ❌ Not implemented | No support |
+| CP        | ❌ Not implemented | No support |
+
+Current: 12 module-level nodes
+Target: 3730 execution nodes (per-source file granularity)
+
 ## Graph Equality
 
 The comparator must parse both graph JSON files and compare graph structure while ignoring only unstable UID values and UID references after robust remapping through graph structure.
