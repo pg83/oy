@@ -70,6 +70,7 @@ func (fp *FileParser) parseFile(path string, g *errgroup.Group, ctx context.Cont
 
 func (fp *FileParser) processModule(module *Module, moduleDir string, g *errgroup.Group, ctx context.Context) {
 	resolvedModule := ResolveConditionals(module, fp.buildCtx, fp.vars)
+	ResolveWhenBlocks(resolvedModule, fp.buildCtx, fp.vars)
 
 	if !EvaluateBuildCondition(resolvedModule, fp.buildCtx, fp.vars) {
 		return

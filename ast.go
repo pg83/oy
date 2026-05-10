@@ -54,16 +54,17 @@ type File struct {
 
 // Module represents a complete ya.make module definition with all its attributes.
 type Module struct {
-	Type           ModuleType
-	SourcePath     string
-	Dependencies   []string
-	Sources        []string
-	Properties     map[string]string
-	Conditionals   []*ConditionalBlock
-	Recursions     []*RecurseDirective
-	BuildCondition *BuildCondition
-	EnabledFlags   []string
-	DisabledFlags  []string
+	Type                ModuleType
+	SourcePath          string
+	Dependencies        []string
+	Sources             []string
+	Properties          map[string]string
+	Conditionals        []*ConditionalBlock
+	Recursions          []*RecurseDirective
+	BuildCondition      *BuildCondition
+	EnabledFlags        []string
+	DisabledFlags       []string
+	ConditionalPeerdirs []*ConditionalPeerdir
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
@@ -96,6 +97,18 @@ type SourceFileList struct {
 // BuildCondition represents a BUILD_ONLY_IF directive that conditions module existence.
 type BuildCondition struct {
 	Expression string
+}
+
+// WhenBlock represents a WHEN() condition attached to statements like PEERDIR.
+type WhenBlock struct {
+	Condition string
+}
+
+// ConditionalPeerdir represents a PEERDIR with an attached WHEN() condition.
+type ConditionalPeerdir struct {
+	Paths      []string
+	Location   SourceLocation
+	WhenClause *WhenBlock
 }
 
 // VersionDeclaration represents a VERSION() directive declaring module version.
@@ -218,4 +231,17 @@ func (m *Module) AddDisabledFlag(flag string) {
 	}
 
 	m.DisabledFlags = append(m.DisabledFlags, flag)
+}
+
+// AddConditionalPeerdir adds a conditional PEERDIR to the module.
+func (m *Module) AddConditionalPeerdir(cp *ConditionalPeerdir) {
+	if m == nil {
+		return
+	}
+
+	if m.ConditionalPeerdirs == nil {
+		m.ConditionalPeerdirs = make([]*ConditionalPeerdir, 0, 1)
+	}
+
+	m.ConditionalPeerdirs = append(m.ConditionalPeerdirs, cp)
 }

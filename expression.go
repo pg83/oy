@@ -2,7 +2,9 @@ package main
 
 // ExprOp represents the type of operation in a conditional expression AST.
 import (
+	"fmt"
 	"strconv"
+	"strings"
 )
 
 type ExprOp int
@@ -57,7 +59,11 @@ func (e *Evaluator) Evaluate(expr *ExpressionAST) bool {
 
 	switch expr.Op {
 	case ExprIdent:
-		return e.vars.IsTrue(expr.Ident)
+		varIdent := expr.Ident
+		if strings.HasPrefix(varIdent, "$") {
+			varIdent = varIdent[1:]
+		}
+		return e.vars.IsTrue(varIdent)
 
 	case ExprAnd:
 		if len(expr.Args) == 0 {
@@ -120,8 +126,25 @@ func (e *Evaluator) Evaluate(expr *ExpressionAST) bool {
 }
 
 func (e *Evaluator) evalComparison(left, right *ExpressionAST, op string) bool {
-	leftVal := e.evalNumeric(left)
-	rightVal := e.evalNumeric(right)
+	leftNum, leftCanNumeric := e.tryEvalCanCastToNumber(left)
+	rightNum, rightCanNumeric := e.tryEvalCanCastToNumber(right)
+
+	if leftCanNumeric && rightCanNumeric {
+		switch op {
+		case "<":
+			return leftNum < rightNum
+		case ">":
+			return leftNum > rightNum
+		case "==":
+			return leftNum == rightNum
+		default:
+			ThrowFmt("invalid comparison operator: %s", op)
+			return false
+		}
+	}
+
+	leftVal, _ := e.evalIdentOrNumberAsString(left)
+	rightVal, _ := e.evalIdentOrNumberAsString(right)
 
 	switch op {
 	case "<":
@@ -136,12 +159,80 @@ func (e *Evaluator) evalComparison(left, right *ExpressionAST, op string) bool {
 	}
 }
 
+func (e *Evaluator) tryEvalCanCastToNumber(expr *ExpressionAST) (float64, bool) {
+	switch expr.Op {
+	case ExprNumber:
+		return expr.Number, true
+	case ExprIdent:
+		varIdent := expr.Ident
+		if strings.HasPrefix(varIdent, "$") {
+			varIdent = varIdent[1:]
+		}
+		val, ok := e.vars.GetValue(varIdent)
+		if !ok {
+			return 0, true
+		}
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
+func (e *Evaluator) tryEvalAsNumber(expr *ExpressionAST) (float64, bool) {
+	switch expr.Op {
+	case ExprNumber:
+		return expr.Number, true
+	case ExprIdent:
+		varIdent := expr.Ident
+		if strings.HasPrefix(varIdent, "$") {
+			varIdent = varIdent[1:]
+		}
+		val, ok := e.vars.GetValue(varIdent)
+		if !ok {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
+func (e *Evaluator) evalIdentOrNumberAsString(expr *ExpressionAST) (string, bool) {
+	switch expr.Op {
+	case ExprNumber:
+		return fmt.Sprintf("%v", expr.Number), false
+	case ExprIdent:
+		varIdent := expr.Ident
+		if strings.HasPrefix(varIdent, "$") {
+			varIdent = varIdent[1:]
+		}
+		if val, ok := e.vars.GetValue(varIdent); ok {
+			return val, true
+		}
+		return varIdent, true
+	default:
+		return "", false
+	}
+}
+
 func (e *Evaluator) evalNumeric(expr *ExpressionAST) float64 {
 	switch expr.Op {
 	case ExprNumber:
 		return expr.Number
 	case ExprIdent:
-		val, ok := e.vars.GetValue(expr.Ident)
+		varIdent := expr.Ident
+		if strings.HasPrefix(varIdent, "$") {
+			varIdent = varIdent[1:]
+		}
+		val, ok := e.vars.GetValue(varIdent)
 		if !ok {
 			return 0
 		}

@@ -169,10 +169,25 @@ func (p *Parser) parseModule(moduleType ModuleType, sourcePath string) *Module {
 		if tok.Value == "PEERDIR" {
 			tok = p.advance()
 			deps := p.parseParenthesizedValues()
-			for _, dep := range deps {
-				dep = strings.TrimSpace(dep)
-				if dep != "" {
-					module.AddDependency(dep)
+
+			if p.peek().Value == "WHEN" {
+				condPeerdir := &ConditionalPeerdir{
+					Paths: deps,
+					Location: SourceLocation{
+						File:   p.filePath,
+						Line:   tok.Line,
+						Column: tok.Col,
+					},
+				}
+				whenBlock := p.parseWhenBlock()
+				condPeerdir.WhenClause = whenBlock
+				module.AddConditionalPeerdir(condPeerdir)
+			} else {
+				for _, dep := range deps {
+					dep = strings.TrimSpace(dep)
+					if dep != "" {
+						module.AddDependency(dep)
+					}
 				}
 			}
 			continue
@@ -591,4 +606,26 @@ func (p *Parser) parseDisable(module *Module) {
 	p.expect(TokenRParen)
 
 	module.AddDisabledFlag(flag)
+}
+
+func (p *Parser) parseWhenBlock() *WhenBlock {
+	p.expectIdent("WHEN")
+	p.expect(TokenLParen)
+
+	conditionTokens := []string{}
+	for {
+		tok := p.peek()
+		if tok.Type == TokenRParen {
+			p.advance()
+			break
+		}
+		conditionTokens = append(conditionTokens, tok.Value)
+		p.advance()
+	}
+
+	condition := strings.Join(conditionTokens, " ")
+
+	return &WhenBlock{
+		Condition: condition,
+	}
 }
