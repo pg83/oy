@@ -11,6 +11,7 @@ type ParseFlagsResult struct {
 	OutputJSON   bool
 	JSONPath     string
 	ValidatePath string
+	Benchmark    bool
 }
 
 func ParseFlags(args []string) (*ParseFlagsResult, error) {
@@ -92,6 +93,11 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 			}
 			continue
 		}
+
+		if arg == "--benchmark" {
+			result.Benchmark = true
+			continue
+		}
 	}
 
 	return &ParseFlagsResult{
@@ -100,6 +106,7 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 		OutputJSON:   result.OutputJSON,
 		JSONPath:     result.JSONPath,
 		ValidatePath: result.ValidatePath,
+		Benchmark:    result.Benchmark,
 	}, nil
 }
 
