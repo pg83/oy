@@ -358,3 +358,57 @@ func TestCarriageReturn(t *testing.T) {
 	expectToken(t, l, TokenRParen, ")", 4, 1)
 	expectEOF(t, l)
 }
+
+func TestComparisonOperators(t *testing.T) {
+	tests := []struct {
+		input     string
+		tokenType TokenType
+		value     string
+	}{
+		{"<", TokenLess, "<"},
+		{">", TokenGreater, ">"},
+		{"==", TokenEqualsEquals, "=="},
+		{"=", TokenEquals, "="},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			expectToken(t, l, tt.tokenType, tt.value, 1, 1)
+			expectEOF(t, l)
+		})
+	}
+}
+
+func TestNumbers(t *testing.T) {
+	tests := []struct {
+		input string
+		value string
+	}{
+		{"0", "0"},
+		{"123", "123"},
+		{"29", "29"},
+		{"3.14", "3.14"},
+		{"0.5", "0.5"},
+		{"100.0", "100.0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			expectToken(t, l, TokenNumber, tt.value, 1, 1)
+			expectEOF(t, l)
+		})
+	}
+}
+
+func TestComparisonExpressionTokens(t *testing.T) {
+	input := "ANDROID_API < 29"
+
+	l := NewLexer(input)
+
+	expectToken(t, l, TokenIdent, "ANDROID_API", 1, 1)
+	expectToken(t, l, TokenLess, "<", 1, 13)
+	expectToken(t, l, TokenNumber, "29", 1, 15)
+	expectEOF(t, l)
+}

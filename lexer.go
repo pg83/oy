@@ -17,6 +17,10 @@ const (
 	TokenPipePipe
 	TokenBang
 	TokenEquals
+	TokenEqualsEquals
+	TokenLess
+	TokenGreater
+	TokenNumber
 )
 
 func (t TokenType) String() string {
@@ -39,6 +43,14 @@ func (t TokenType) String() string {
 		return "!"
 	case TokenEquals:
 		return "="
+	case TokenEqualsEquals:
+		return "=="
+	case TokenLess:
+		return "<"
+	case TokenGreater:
+		return ">"
+	case TokenNumber:
+		return "NUMBER"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}
@@ -110,6 +122,27 @@ func (l *Lexer) readIdent() string {
 	for {
 		ch := l.peek()
 		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '/' || ch == '.' || ch == '-' || ch == '+' || ch == '*' || ch == ':' {
+			buf.WriteRune(ch)
+			l.read()
+		} else {
+			break
+		}
+	}
+
+	return buf.String()
+}
+
+func (l *Lexer) readNumber() string {
+	var buf strings.Builder
+	hasDecimal := false
+
+	for {
+		ch := l.peek()
+		if ch >= '0' && ch <= '9' {
+			buf.WriteRune(ch)
+			l.read()
+		} else if ch == '.' && !hasDecimal {
+			hasDecimal = true
 			buf.WriteRune(ch)
 			l.read()
 		} else {
@@ -275,15 +308,32 @@ func (l *Lexer) NextToken() (Token, error) {
 		}
 
 		if ch == '=' {
+			startCol := l.col
 			l.read()
-			return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: l.col}, nil
+			if l.peek() == '=' {
+				l.read()
+				return Token{Type: TokenEqualsEquals, Value: "==", Line: l.line, Col: startCol}, nil
+			}
+			return Token{Type: TokenEquals, Value: "=", Line: l.line, Col: startCol}, nil
+		}
+
+		if ch == '<' {
+			startCol := l.col
+			l.read()
+			return Token{Type: TokenLess, Value: "<", Line: l.line, Col: startCol}, nil
+		}
+
+		if ch == '>' {
+			startCol := l.col
+			l.read()
+			return Token{Type: TokenGreater, Value: ">", Line: l.line, Col: startCol}, nil
 		}
 
 		if ch >= '0' && ch <= '9' {
 			startLine := l.line
 			startCol := l.col
-			ident := l.readIdent()
-			return Token{Type: TokenIdent, Value: ident, Line: startLine, Col: startCol}, nil
+			num := l.readNumber()
+			return Token{Type: TokenNumber, Value: num, Line: startLine, Col: startCol}, nil
 		}
 
 		if ch == '/' {

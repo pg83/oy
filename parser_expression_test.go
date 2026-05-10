@@ -249,3 +249,186 @@ func TestParseConditionExpression_ErrorUnexpectedToken(t *testing.T) {
 
 	ParseConditionExpression("OS_LINUX OR")
 }
+
+func TestParseConditionExpression_LessThan(t *testing.T) {
+	expr := ParseConditionExpression("ANDROID_API < 29")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprLessThan {
+		t.Errorf("expected ExprLessThan, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "ANDROID_API" {
+		t.Errorf("expected ident 'ANDROID_API', got '%s'", expr.Args[0].Ident)
+	}
+
+	if expr.Args[1].Number != 29 {
+		t.Errorf("expected number 29, got %f", expr.Args[1].Number)
+	}
+}
+
+func TestParseConditionExpression_GreaterThan(t *testing.T) {
+	expr := ParseConditionExpression("VERSION > 2")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprGreaterThan {
+		t.Errorf("expected ExprGreaterThan, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "VERSION" {
+		t.Errorf("expected ident 'VERSION', got '%s'", expr.Args[0].Ident)
+	}
+
+	if expr.Args[1].Number != 2 {
+		t.Errorf("expected number 2, got %f", expr.Args[1].Number)
+	}
+}
+
+func TestParseConditionExpression_Equals(t *testing.T) {
+	expr := ParseConditionExpression("LEVEL == 5")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprEqual {
+		t.Errorf("expected ExprEqual, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "LEVEL" {
+		t.Errorf("expected ident 'LEVEL', got '%s'", expr.Args[0].Ident)
+	}
+
+	if expr.Args[1].Number != 5 {
+		t.Errorf("expected number 5, got %f", expr.Args[1].Number)
+	}
+}
+
+func TestParseConditionExpression_NumberDecimal(t *testing.T) {
+	expr := ParseConditionExpression("VERSION > 3.14")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[1].Number != 3.14 {
+		t.Errorf("expected number 3.14, got %f", expr.Args[1].Number)
+	}
+}
+
+func TestParseConditionExpression_ComparisonWithAnd(t *testing.T) {
+	expr := ParseConditionExpression("OS_ANDROID AND ANDROID_API < 29")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprAnd {
+		t.Errorf("expected ExprAnd, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Ident != "OS_ANDROID" {
+		t.Errorf("expected ident 'OS_ANDROID', got '%s'", expr.Args[0].Ident)
+	}
+
+	left := expr.Args[1]
+	if left.Op != ExprLessThan {
+		t.Errorf("expected ExprLessThan, got %v", left.Op)
+	}
+}
+
+func TestParseConditionExpression_ComparisonWithOr(t *testing.T) {
+	expr := ParseConditionExpression("API == 29 OR API == 30")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprOr {
+		t.Errorf("expected ExprOr, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+}
+
+func TestParseConditionExpression_ComparisonWithNot(t *testing.T) {
+	expr := ParseConditionExpression("NOT VERSION == 1")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprNot {
+		t.Errorf("expected ExprNot, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 1 {
+		t.Fatalf("expected 1 arg, got %d", len(expr.Args))
+	}
+
+	if expr.Args[0].Op != ExprEqual {
+		t.Errorf("expected ExprEqual, got %v", expr.Args[0].Op)
+	}
+}
+
+func TestParseConditionExpression_ComparisonWithParens(t *testing.T) {
+	expr := ParseConditionExpression("(OS_ANDROID AND ANDROID_API < 29)")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprAnd {
+		t.Errorf("expected ExprAnd, got %v", expr.Op)
+	}
+
+	if len(expr.Args) != 2 {
+		t.Fatalf("expected 2 args, got %d", len(expr.Args))
+	}
+}
+
+func TestParseConditionExpression_PrecedenceComparisonAnd(t *testing.T) {
+	expr := ParseConditionExpression("A AND B < 10")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprAnd {
+		t.Errorf("expected ExprAnd (comparison has higher precedence), got %v", expr.Op)
+	}
+
+	if expr.Args[1].Op != ExprLessThan {
+		t.Errorf("expected second arg to be ExprLessThan, got %v", expr.Args[1].Op)
+	}
+}
+
+func TestParseConditionExpression_PrecedenceComparisonOr(t *testing.T) {
+	expr := ParseConditionExpression("A == 10 OR B == 20")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	if expr.Op != ExprOr {
+		t.Errorf("expected ExprOr (comparison has higher precedence than OR), got %v", expr.Op)
+	}
+}

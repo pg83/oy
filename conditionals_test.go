@@ -542,3 +542,258 @@ func TestMergeModule(t *testing.T) {
 		t.Errorf("Expected 2 recursions, got %d", len(target.Recursions))
 	}
 }
+
+func TestEvaluatorComparisonLessThan(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("ANDROID_API", "29")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprLessThan,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "ANDROID_API"},
+			{Op: ExprNumber, Number: 30},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for 29 < 30")
+	}
+}
+
+func TestEvaluatorComparisonGreaterThan(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("VERSION", "3")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprGreaterThan,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "VERSION"},
+			{Op: ExprNumber, Number: 2},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for 3 > 2")
+	}
+}
+
+func TestEvaluatorComparisonEqual(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("LEVEL", "5")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprEqual,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "LEVEL"},
+			{Op: ExprNumber, Number: 5},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for 5 == 5")
+	}
+}
+
+func TestEvaluatorComparisonLessThanFalse(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("ANDROID_API", "30")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprLessThan,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "ANDROID_API"},
+			{Op: ExprNumber, Number: 29},
+		},
+	}
+
+	if evaluator.Evaluate(expr) {
+		t.Error("Expected false for 30 < 29")
+	}
+}
+
+func TestEvaluatorComparisonEqualFalse(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("LEVEL", "6")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprEqual,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "LEVEL"},
+			{Op: ExprNumber, Number: 5},
+		},
+	}
+
+	if evaluator.Evaluate(expr) {
+		t.Error("Expected false for 6 == 5")
+	}
+}
+
+func TestEvaluatorComparisonMissingVariable(t *testing.T) {
+	vars := NewMemoryVariableSet()
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprLessThan,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "MISSING"},
+			{Op: ExprNumber, Number: 30},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for 0 < 30 (missing variable defaults to 0)")
+	}
+}
+
+func TestEvaluatorComparisonNumberDecimal(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("VERSION", "3.14")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprLessThan,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "VERSION"},
+			{Op: ExprNumber, Number: 3.15},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for 3.14 < 3.15")
+	}
+}
+
+func TestEvaluatorComparisonBooleanAndComparison(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("OS_ANDROID", "yes")
+	vars.SetValue("ANDROID_API", "29")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprAnd,
+		Args: []*ExpressionAST{
+			{Op: ExprIdent, Ident: "OS_ANDROID"},
+			{
+				Op: ExprLessThan,
+				Args: []*ExpressionAST{
+					{Op: ExprIdent, Ident: "ANDROID_API"},
+					{Op: ExprNumber, Number: 30},
+				},
+			},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for OS_ANDROID && ANDROID_API < 30")
+	}
+}
+
+func TestEvaluatorComparisonBooleanOrComparison(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("API1", "29")
+	vars.SetValue("API2", "30")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprOr,
+		Args: []*ExpressionAST{
+			{
+				Op: ExprEqual,
+				Args: []*ExpressionAST{
+					{Op: ExprIdent, Ident: "API1"},
+					{Op: ExprNumber, Number: 29},
+				},
+			},
+			{
+				Op: ExprEqual,
+				Args: []*ExpressionAST{
+					{Op: ExprIdent, Ident: "API2"},
+					{Op: ExprNumber, Number: 30},
+				},
+			},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for API1 == 29 OR API2 == 30")
+	}
+}
+
+func TestEvaluatorComparisonWithNot(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("VERSION", "2")
+
+	evaluator := NewEvaluator(vars)
+	expr := &ExpressionAST{
+		Op: ExprNot,
+		Args: []*ExpressionAST{
+			{
+				Op: ExprEqual,
+				Args: []*ExpressionAST{
+					{Op: ExprIdent, Ident: "VERSION"},
+					{Op: ExprNumber, Number: 1},
+				},
+			},
+		},
+	}
+
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for NOT VERSION == 1")
+	}
+}
+
+func TestParseAndEvaluateComparison(t *testing.T) {
+	vars := NewMemoryVariableSet()
+	vars.SetValue("ANDROID_API", "29")
+
+	expr := ParseConditionExpression("ANDROID_API < 30")
+	if expr == nil {
+		t.Fatal("expected non-nil expression")
+	}
+
+	evaluator := NewEvaluator(vars)
+	if !evaluator.Evaluate(expr) {
+		t.Error("Expected true for ANDROID_API < 30")
+	}
+}
+
+func TestResolveConditionalsWithComparison(t *testing.T) {
+	ctx := &BuildContext{Platform: PlatformLinux, Arch: Arch64, Compiler: CompilerGCC}
+	vars := NewMemoryVariableSet()
+	vars.SetValue("ANDROID_API", "29")
+
+	baseModule := &Module{
+		Type:         ModuleTypeLibrary,
+		SourcePath:   "lib/base",
+		Dependencies: []string{"base_dep"},
+		Sources:      []string{"base.cpp"},
+		Properties:   map[string]string{"base_key": "base_val"},
+		Conditionals: []*ConditionalBlock{
+			{
+				IfBranch: &ConditionalBranch{
+					Condition: "ANDROID_API < 30",
+					Module: &Module{
+						Dependencies: []string{"old_android_dep"},
+						Sources:      []string{"old_android.cpp"},
+						Properties:   map[string]string{"old_key": "old_val"},
+					},
+				},
+			},
+		},
+	}
+
+	result := ResolveConditionals(baseModule, ctx, vars)
+
+	if len(result.Dependencies) != 2 {
+		t.Errorf("Expected 2 dependencies, got %d", len(result.Dependencies))
+	}
+
+	if result.Properties["old_key"] != "old_val" {
+		t.Error("Expected old_key property to be merged")
+	}
+}
