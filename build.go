@@ -13,11 +13,18 @@ type BuildEngine struct {
 	sourceRoot  string
 	visitedDeps map[string]bool
 	diag        *TraversalLogger
+	config      *ConfigParser
 }
 
 func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
 	registry := NewModuleRegistry()
 	recurser := NewRecurseProcessor(registry, ctx)
+
+	configPath := sourceRoot + "/build/ymake.core.conf"
+	var config *ConfigParser
+	if _, err := os.Stat(configPath); err == nil {
+		config = Throw2(ParseYmakeCoreConfig(configPath))
+	}
 
 	return &BuildEngine{
 		registry:    registry,
@@ -25,12 +32,19 @@ func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
 		ctx:         ctx,
 		sourceRoot:  sourceRoot,
 		visitedDeps: make(map[string]bool),
+		config:      config,
 	}
 }
 
 func NewBuildEngineWithDiag(ctx *ParseContext, sourceRoot string, diag *TraversalLogger) *BuildEngine {
 	registry := NewModuleRegistry()
 	recurser := NewRecurseProcessor(registry, ctx)
+
+	configPath := sourceRoot + "/build/ymake.core.conf"
+	var config *ConfigParser
+	if _, err := os.Stat(configPath); err == nil {
+		config = Throw2(ParseYmakeCoreConfig(configPath))
+	}
 
 	return &BuildEngine{
 		registry:    registry,
@@ -39,6 +53,7 @@ func NewBuildEngineWithDiag(ctx *ParseContext, sourceRoot string, diag *Traversa
 		sourceRoot:  sourceRoot,
 		visitedDeps: make(map[string]bool),
 		diag:        diag,
+		config:      config,
 	}
 }
 
@@ -172,6 +187,14 @@ func (be *BuildEngine) processPeerDependencies(module *Module) {
 		if !hasLibcxx && moduleKey != "contrib/libs/cxxsupp/libcxx" {
 			module.Dependencies = append(module.Dependencies, "contrib/libs/cxxsupp/libcxx")
 		}
+
+		if module.Type == ModuleTypeProgram && be.shouldInjectConfigPEERDIRs() {
+			configVars := be.buildConfigVariables()
+			injected := be.config.ResolveConfigPEERDIRS(configVars)
+			for _, peerdir := range injected {
+				module.Dependencies = append(module.Dependencies, peerdir)
+			}
+		}
 	}
 
 	for _, depPath := range module.Dependencies {
@@ -295,6 +318,38 @@ func (be *BuildEngine) resolveIncludePath(includePath, containingDir string) str
 		return includePath
 	}
 	return filepath.Join(containingDir, includePath)
+}
+
+func (be *BuildEngine) buildConfigVariables() map[string]string {
+	vars := make(map[string]string)
+	vars["MUSL"] = "no"
+	if be.ctx.Musl {
+		vars["MUSL"] = "yes"
+	}
+	vars["OS_LINUX"] = "no"
+	if be.ctx.Platform == "linux" || be.ctx.Platform == "" {
+		vars["OS_LINUX"] = "yes"
+	}
+	vars["OS_WINDOWS"] = "no"
+	if be.ctx.Platform == "windows" {
+		vars["OS_WINDOWS"] = "yes"
+	}
+	vars["ARCH_X86_64"] = "no"
+	if be.ctx.ArchString == "x86_64" {
+		vars["ARCH_X86_64"] = "yes"
+	}
+	vars["ARCH_AARCH64"] = "no"
+	if be.ctx.ArchString == "aarch64" {
+		vars["ARCH_AARCH64"] = "yes"
+	}
+	return vars
+}
+
+func (be *BuildEngine) shouldInjectConfigPEERDIRs() bool {
+	if be.config == nil {
+		return false
+	}
+	return be.ctx.Musl
 }
 
 func BuildDependencyGraph(targetPath string, ctx ParseContext, sourceRoot string, diag *TraversalLogger) (*Graph, error) {
