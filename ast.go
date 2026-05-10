@@ -65,6 +65,7 @@ type Module struct {
 	EnabledFlags        []string
 	DisabledFlags       []string
 	ConditionalPeerdirs []*ConditionalPeerdir
+	IncludeDirectives   []*IncludeDirective
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
@@ -120,6 +121,12 @@ type VersionDeclaration struct {
 type LicenseDeclaration struct {
 	LicenseType string
 	Location    SourceLocation
+}
+
+// IncludeDirective represents an INCLUDE() directive that includes another ya.make file.
+type IncludeDirective struct {
+	FilePath string
+	Location SourceLocation
 }
 
 // HasProperty checks if a property with the given key exists in the module.
@@ -244,4 +251,17 @@ func (m *Module) AddConditionalPeerdir(cp *ConditionalPeerdir) {
 	}
 
 	m.ConditionalPeerdirs = append(m.ConditionalPeerdirs, cp)
+}
+
+// AddIncludeDirective adds an INCLUDE directive to the module.
+func (m *Module) AddIncludeDirective(include *IncludeDirective) {
+	if m == nil {
+		return
+	}
+
+	if m.IncludeDirectives == nil {
+		m.IncludeDirectives = make([]*IncludeDirective, 0, 1)
+	}
+
+	m.IncludeDirectives = append(m.IncludeDirectives, include)
 }

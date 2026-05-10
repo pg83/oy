@@ -9,6 +9,7 @@ import (
 type BuildContext struct {
 	Platform       Platform
 	Arch           Arch
+	ArchString     string
 	Compiler       Compiler
 	Flags          map[string]bool
 	Languages      map[string]bool
@@ -69,10 +70,16 @@ func NewBuildContext() *BuildContext {
 	switch runtime.GOARCH {
 	case "386":
 		ctx.Arch = Arch32
-	case "amd64", "arm64":
+		ctx.ArchString = "x86_32"
+	case "amd64":
 		ctx.Arch = Arch64
+		ctx.ArchString = "x86_64"
+	case "arm64":
+		ctx.Arch = Arch64
+		ctx.ArchString = "aarch64"
 	default:
 		ctx.Arch = Arch64
+		ctx.ArchString = "x86_64"
 	}
 
 	if ctx.Platform == PlatformDarwin {

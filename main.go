@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 func main() {
@@ -192,8 +193,13 @@ func normalizeCLITargetPath(targetPath string) string {
 }
 
 func buildParseContext(result *ParseFlagsResult, targetPath string) ParseContext {
+	archString := "x86_64"
+	if runtime.GOARCH == "arm64" {
+		archString = "aarch64"
+	}
 	return ParseContext{
 		Platform:   "linux",
+		ArchString: archString,
 		TargetPath: targetPath,
 		Language:   result.Ctx.Language,
 		Musl:       result.Ctx.Musl,

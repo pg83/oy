@@ -103,7 +103,7 @@ func (b *BuildContextVariableSet) GetValue(key string) (string, bool) {
 
 // IsTrue resolves built-in constants from BuildContext and delegates unknown keys
 // to the inner set. OS constants: OS_LINUX, OS_WINDOWS, OS_DARWIN, OS_MAC (legacy).
-// Architecture: ARCH_TYPE_64, ARCH_TYPE_32. Compiler: MSVC, CLANG, GCC.
+// Architecture: ARCH_TYPE_64, ARCH_TYPE_32, ARCH_X86_64, ARCH_AARCH64. Compiler: MSVC, CLANG, GCC.
 // Platform flags: MUSL, TARGET_PLATFORM_*, language flags: PROTO, GO, PYTHON3, etc.
 func (b *BuildContextVariableSet) IsTrue(key string) bool {
 	switch key {
@@ -117,6 +117,10 @@ func (b *BuildContextVariableSet) IsTrue(key string) bool {
 		return b.ctx.Arch == Arch64
 	case "ARCH_TYPE_32":
 		return b.ctx.Arch == Arch32
+	case "ARCH_X86_64":
+		return b.ctx.ArchString == "x86_64"
+	case "ARCH_AARCH64":
+		return b.ctx.ArchString == "aarch64"
 	case "MSVC":
 		return b.ctx.Compiler == CompilerMSVC
 	case "CLANG":
@@ -141,7 +145,7 @@ func (b *BuildContextVariableSet) HasKey(key string) bool {
 	switch key {
 	case "OS_LINUX", "OS_WINDOWS", "OS_DARWIN", "OS_MAC":
 		return true
-	case "ARCH_TYPE_64", "ARCH_TYPE_32":
+	case "ARCH_TYPE_64", "ARCH_TYPE_32", "ARCH_X86_64", "ARCH_AARCH64":
 		return true
 	case "MSVC", "CLANG", "GCC":
 		return true

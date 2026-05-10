@@ -62,11 +62,18 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 	be.recurser.ProcessRecurse(mainModule, be.sourceRoot)
 
 	buildContext := be.createBuildContext()
+	vars := NewMemoryVariableSet()
+	bcVars := NewBuildContextVariableSet(buildContext, vars)
 
-	resolvedModule := ResolveConditionals(mainModule, buildContext, NewMemoryVariableSet())
-	ResolveWhenBlocks(resolvedModule, buildContext, NewMemoryVariableSet())
+	resolvedModule := ResolveConditionals(mainModule, buildContext, bcVars)
+	ResolveWhenBlocks(resolvedModule, buildContext, bcVars)
 
-	if !EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
+	// Process INCLUDE directives for the main module
+	for _, include := range resolvedModule.IncludeDirectives {
+		be.processInclude(include, resolvedModule, filepath.Dir(filepath.ToSlash(absTargetPath)), buildContext, bcVars)
+	}
+
+	if !EvaluateBuildCondition(resolvedModule, buildContext, bcVars) {
 		ThrowFmt("module excluded by BUILD_ONLY_IF condition: %s", mainModule.SourcePath)
 	}
 
@@ -113,6 +120,18 @@ func (be *BuildEngine) createBuildContext() *BuildContext {
 			ctx.Platform = PlatformWindows
 		case "darwin", "mac":
 			ctx.Platform = PlatformDarwin
+		}
+	}
+
+	if be.ctx.ArchString != "" {
+		ctx.ArchString = be.ctx.ArchString
+		switch be.ctx.ArchString {
+		case "x86_64":
+			ctx.Arch = Arch64
+		case "x86_32":
+			ctx.Arch = Arch32
+		case "aarch64":
+			ctx.Arch = Arch64
 		}
 	}
 
@@ -204,12 +223,19 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string, parentPath stri
 		module.SourcePath = strings.TrimPrefix(module.SourcePath, "/")
 
 		buildContext := be.createBuildContext()
-		resolvedModule := ResolveConditionals(module, buildContext, NewMemoryVariableSet())
-		ResolveWhenBlocks(resolvedModule, buildContext, NewMemoryVariableSet())
+		vars := NewMemoryVariableSet()
+		bcVars := NewBuildContextVariableSet(buildContext, vars)
+
+		resolvedModule := ResolveConditionals(module, buildContext, bcVars)
+		ResolveWhenBlocks(resolvedModule, buildContext, bcVars)
+
+		for _, include := range resolvedModule.IncludeDirectives {
+			be.processInclude(include, resolvedModule, moduleDir, buildContext, bcVars)
+		}
 
 		normModulePath := NormalizedPath(module.SourcePath)
 
-		if EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
+		if EvaluateBuildCondition(resolvedModule, buildContext, bcVars) {
 			be.registry.Register(normModulePath, resolvedModule)
 			if be.diag != nil {
 				be.diag.LogModuleLoad(normModulePath, parentPath, true, "")
@@ -232,6 +258,43 @@ func (be *BuildEngine) findModuleYaMakeFile(modulePath string) string {
 	}
 
 	return ""
+}
+
+func (be *BuildEngine) processInclude(include *IncludeDirective, module *Module, baseDir string, buildContext *BuildContext, vars VariableSet) {
+	resolvedPath := be.resolveIncludePath(include.FilePath, baseDir)
+	content := Throw2(os.ReadFile(resolvedPath))
+
+	includeFile := ParseYaMakeString(string(content), resolvedPath)
+
+	if len(includeFile.Modules) > 0 {
+		for _, inclModule := range includeFile.Modules {
+			resolvedInclModule := ResolveConditionals(inclModule, buildContext, vars)
+			ResolveWhenBlocks(resolvedInclModule, buildContext, vars)
+
+			if !EvaluateBuildCondition(resolvedInclModule, buildContext, vars) {
+				continue
+			}
+
+			MergeModule(module, resolvedInclModule)
+		}
+	} else {
+		inclModule := ParseModuleFragment(string(content), resolvedPath)
+		resolvedInclModule := ResolveConditionals(inclModule, buildContext, vars)
+		ResolveWhenBlocks(resolvedInclModule, buildContext, vars)
+
+		if !EvaluateBuildCondition(resolvedInclModule, buildContext, vars) {
+			return
+		}
+
+		MergeModule(module, resolvedInclModule)
+	}
+}
+
+func (be *BuildEngine) resolveIncludePath(includePath, containingDir string) string {
+	if filepath.IsAbs(includePath) {
+		return includePath
+	}
+	return filepath.Join(containingDir, includePath)
 }
 
 func BuildDependencyGraph(targetPath string, ctx ParseContext, sourceRoot string, diag *TraversalLogger) (*Graph, error) {
