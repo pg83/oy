@@ -265,3 +265,52 @@ END()
 		t.Fatalf("expected 1 conditional, got %d", len(file.Conditionals))
 	}
 }
+
+func TestParseLibcxxWithCommaFlags(t *testing.T) {
+	content := `LIBRARY()
+
+IF (OS_EMSCRIPTEN)
+    SET(CXX_RT "libcxxabi")
+    LDFLAGS(-Wl,-Bdynamic)
+    CXXFLAGS(-nostdinc++)
+ENDIF()
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeLibrary, "test")
+	if module == nil {
+		t.Fatal("expected non-nil module")
+	}
+
+	if module.Type != ModuleTypeLibrary {
+		t.Errorf("expected ModuleTypeLibrary, got %v", module.Type)
+	}
+}
+
+func TestParseMuslWithCommaFlags(t *testing.T) {
+	content := `LIBRARY()
+
+CFLAGS(
+    GLOBAL -D_musl_=1
+    -nostdinc
+)
+
+LDFLAGS(-static)
+
+IF (NOT WITH_VALGRIND)
+    LDFLAGS(-Wl,--no-dynamic-linker)
+ENDIF()
+
+END()
+`
+
+	module := NewParser(content, "test/ya.make").parseModule(ModuleTypeLibrary, "test")
+	if module == nil {
+		t.Fatal("expected non-nil module")
+	}
+
+	if module.Type != ModuleTypeLibrary {
+		t.Errorf("expected ModuleTypeLibrary, got %v", module.Type)
+	}
+}

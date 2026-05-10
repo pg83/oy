@@ -412,3 +412,48 @@ func TestComparisonExpressionTokens(t *testing.T) {
 	expectToken(t, l, TokenNumber, "29", 1, 15)
 	expectEOF(t, l)
 }
+
+func TestFlagsWithCommas(t *testing.T) {
+	tests := []struct {
+		input  string
+		tokens []TokenType
+		values []string
+	}{
+		{
+			input:  `LDFLAGS(-Wl,--allow-multiple-definition)`,
+			tokens: []TokenType{TokenIdent, TokenLParen, TokenIdent, TokenRParen},
+			values: []string{"LDFLAGS", "(", "-Wl,--allow-multiple-definition", ")"},
+		},
+		{
+			input:  `CFLAGS(-Wno-deprecated-declarations)`,
+			tokens: []TokenType{TokenIdent, TokenLParen, TokenIdent, TokenRParen},
+			values: []string{"CFLAGS", "(", "-Wno-deprecated-declarations", ")"},
+		},
+		{
+			input:  `LDFLAGS(-Wl,-Bdynamic)`,
+			tokens: []TokenType{TokenIdent, TokenLParen, TokenIdent, TokenRParen},
+			values: []string{"LDFLAGS", "(", "-Wl,-Bdynamic", ")"},
+		},
+		{
+			input:  `LDFLAGS(-Wl,--no-dynamic-linker)`,
+			tokens: []TokenType{TokenIdent, TokenLParen, TokenIdent, TokenRParen},
+			values: []string{"LDFLAGS", "(", "-Wl,--no-dynamic-linker", ")"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			l := NewLexer(tt.input)
+			for i := 0; i < len(tt.tokens); i++ {
+				tok := Throw2(l.NextToken())
+				if tok.Type != tt.tokens[i] {
+					t.Errorf("Token %d: type = %v, want %v", i, tok.Type, tt.tokens[i])
+				}
+				if tok.Value != tt.values[i] {
+					t.Errorf("Token %d: value = %q, want %q", i, tok.Value, tt.values[i])
+				}
+			}
+			expectEOF(t, l)
+		})
+	}
+}
