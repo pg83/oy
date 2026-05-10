@@ -18,13 +18,16 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 		SourcePath: "util/charset",
 		Type:       ModuleTypeLibrary,
 		Sources: []string{
-			"all_charset.cpp",
-			"generated/unidata.cpp",
-			"recode_result.cpp",
 			"unicode_table.cpp",
 			"unidata.cpp",
 			"utf8.cpp",
 			"wide.cpp",
+		},
+		JoinSrcsDirectives: []*JoinSrcsDirective{
+			{
+				OutputFile: "all_charset.cpp",
+				InputFiles: []string{"generated/unidata.cpp", "recode_result.cpp"},
+			},
 		},
 		Dependencies: []string{},
 		Properties:   map[string]string{},
@@ -77,14 +80,14 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 		}
 	}
 
-	expectedJS := 0
+	expectedJS := 2
 	expectedR6 := 2
 	expectedCP := 2
 
 	t.Logf("Node types: %+v", nodeTypes)
 
 	if nodeTypes["JS"] != expectedJS {
-		t.Logf("JS nodes: Expected %d, got %d (limitation in JOIN_SRCS parsing)", expectedJS, nodeTypes["JS"])
+		t.Errorf("JS nodes: Expected %d, got %d", expectedJS, nodeTypes["JS"])
 	}
 
 	if nodeTypes["R6"] != expectedR6 {

@@ -228,6 +228,7 @@ func (l *Lexer) isKeyword(ident string) (TokenType, bool) {
 		"VERSION":           TokenIdent,
 		"BUILD_ONLY_IF":     TokenIdent,
 		"WHEN":              TokenIdent,
+		"JOIN_SRCS":         TokenIdent,
 	}
 
 	tt, ok := keywords[ident]

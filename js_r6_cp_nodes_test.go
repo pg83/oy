@@ -346,3 +346,59 @@ func TestIsJSGenSource(t *testing.T) {
 		}
 	}
 }
+
+func TestJoinSrcsNodeInputs(t *testing.T) {
+	ctx := &ParseContext{
+		Platform:   "default-linux-aarch64",
+		TargetPath: "/home/pg/monorepo/yatool_orig/tools/archiver",
+		Language:   "cpp",
+		BuildFlags: map[string]string{},
+	}
+
+	registry := NewModuleRegistry()
+	module := &Module{
+		SourcePath:   "util/charset",
+		Type:         ModuleTypeLibrary,
+		Sources:      []string{},
+		Dependencies: []string{},
+		Properties:   map[string]string{},
+		JoinSrcsDirectives: []*JoinSrcsDirective{
+			{
+				OutputFile: "all_charset.cpp",
+				InputFiles: []string{"generated/unidata.cpp", "recode_result.cpp"},
+			},
+		},
+	}
+
+	registry.Register("util/charset", module)
+	gb := NewGraphBuilder(registry, ctx)
+	platformCtx := PlatformAwareContext{ctx: ctx, arch: PlatformAARCH64}
+
+	jsd := module.JoinSrcsDirectives[0]
+	jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
+
+	if jsNode == nil {
+		t.Fatal("createJoinSrcsNode returned nil")
+	}
+
+	if jsNode.KV["p"] != "JS" {
+		t.Errorf("Expected KV.p='JS', got '%s'", jsNode.KV["p"])
+	}
+
+	expectedInputs := []string{
+		"$(SOURCE_ROOT)/build/scripts/process_command_files.py",
+		"$(SOURCE_ROOT)/util/charset/generated/unidata.cpp",
+		"$(SOURCE_ROOT)/util/charset/recode_result.cpp",
+	}
+
+	for i, expected := range expectedInputs {
+		if jsNode.Inputs[i] != expected {
+			t.Errorf("Input %d: expected '%s', got '%s'", i, expected, jsNode.Inputs[i])
+		}
+	}
+
+	cmdArgs := jsNode.Cmds[0].CmdArgs
+	if !strings.Contains(cmdArgs[2], "all_charset.cpp") {
+		t.Errorf("Expected all_charset.cpp in output, got '%s'", cmdArgs[2])
+	}
+}
