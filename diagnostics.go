@@ -3,13 +3,20 @@ package main
 // diagnostics.go provides diagnostic logging for ymake build process.
 // Use --diag-peerdir flag to enable PEERDIR traversal diagnostics.
 // Use --diag-eval flag to enable variable evaluation diagnostics in conditionals.
+// Use --diag-tool-modules flag to enable tool module loading and node creation diagnostics.
 //
 // Variable evaluation diagnostics (--diag-eval):
 // - Logs all variable lookups during IF/ELSEIF/BUILD_ONLY_IF/WHEN evaluation
 // - Shows variable name, value, boolean result, and original expression
 // - Helps debug conditional logic and understands which variables are being tested
 //
-// Example output:
+// Tool module diagnostics (--diag-tool-modules):
+// - Logs tool module discovery and loading (e.g., contrib/tools/ragel6)
+// - Tracks execution node creation by module and platform
+// - Shows platform-based filtering decisions and conditional evaluation
+// - Helps understand node count discrepancies between reference and generated graphs
+//
+// Example output (--diag-eval):
 // ======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========
 // Total variable evaluations: 78
 // Evaluations resulting in true: 18 (23.1%)
@@ -20,9 +27,28 @@ package main
 //   [BUILD_ONLY_IF] util/charset: OS_LINUX -> "true" => true (expr: OS_LINUX)
 //   [WHEN] util: PREBUILT -> "no" => false (expr: PREBUILT)
 // ========================= END EVAL SUMMARY ========================
+//
+// Example output (--diag-tool-modules):
+// ======== TOOL MODULE LOADING DIAGNOSTIC SUMMARY ========
+// Tool modules discovered: 1
+//   - contrib/tools/ragel6 (loaded from util)
+//
+// ======== EXECUTION NODE CREATION DIAGNOSTIC SUMMARY ========
+// Total nodes created: 3730
+// Nodes by platform:
+//   - default-linux-aarch64: 1865 (50.0%)
+//   - default-linux-x86_64: 1865 (50.0%)
+//
+// --- Tool Module Node Details ---
+// util module R6 nodes:
+//   - default-linux-aarch64: datetime/parser.rl6
+//   - default-linux-x86_64: datetime/parser.rl6
+//
+// ========================= END TOOL MODULE SUMMARY ========================
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -31,11 +57,15 @@ type TraversalLogger struct {
 	mu                 sync.Mutex
 	enabled            bool
 	evalTracingEnabled bool
+	toolDiagEnabled    bool
 	peerdirResolves    []PeerdirResolution
 	moduleLoads        []ModuleLoad
 	registryLookups    []RegistryLookup
 	unreachableModules map[string]bool
 	evalVarTraces      []EvalVarTrace
+	toolModuleLoads    []ToolModuleLoad
+	nodeCreationLogs   []NodeCreationLog
+	platformFilterLogs []PlatformFilterLog
 }
 
 type PeerdirResolution struct {
@@ -67,6 +97,33 @@ type EvalVarTrace struct {
 	Expression    string
 }
 
+type ToolModuleLoad struct {
+	ToolPath   string
+	ParentPath string
+	Loaded     bool
+	NodeType   string
+	SourceFile string
+	Success    bool
+	Reason     string
+}
+
+type NodeCreationLog struct {
+	ModulePath string
+	Platform   string
+	NodeType   string
+	SourceFile string
+	UID        string
+}
+
+type PlatformFilterLog struct {
+	ModulePath string
+	Platform   string
+	NodeType   string
+	SourceFile string
+	Filtered   bool
+	Reason     string
+}
+
 var globalLogger *TraversalLogger
 
 func SetGlobalTraversalLogger(logger *TraversalLogger) {
@@ -89,6 +146,13 @@ func (tl *TraversalLogger) IsEvalTracingEnabled() bool {
 		return false
 	}
 	return tl.evalTracingEnabled
+}
+
+func (tl *TraversalLogger) IsToolDiagEnabled() bool {
+	if tl == nil {
+		return false
+	}
+	return tl.toolDiagEnabled
 }
 
 func (tl *TraversalLogger) LogPeerdirResolution(fromModule, toPath string, resolved bool, foundModule string) {
@@ -138,6 +202,56 @@ func (tl *TraversalLogger) LogModuleLoad(modulePath, fromParent string, success 
 		ModulePath: modulePath,
 		FromParent: fromParent,
 		Success:    success,
+		Reason:     reason,
+	})
+}
+
+func (tl *TraversalLogger) LogToolModuleLoad(toolPath, parentPath string, loaded bool, nodeType, sourceFile string) {
+	if !tl.IsEnabled() || !tl.IsToolDiagEnabled() {
+		return
+	}
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+
+	tl.toolModuleLoads = append(tl.toolModuleLoads, ToolModuleLoad{
+		ToolPath:   toolPath,
+		ParentPath: parentPath,
+		Loaded:     loaded,
+		NodeType:   nodeType,
+		SourceFile: sourceFile,
+		Success:    loaded,
+	})
+}
+
+func (tl *TraversalLogger) LogNodeCreation(modulePath, platform, nodeType, sourceFile, uid string) {
+	if !tl.IsEnabled() || !tl.IsToolDiagEnabled() {
+		return
+	}
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+
+	tl.nodeCreationLogs = append(tl.nodeCreationLogs, NodeCreationLog{
+		ModulePath: modulePath,
+		Platform:   platform,
+		NodeType:   nodeType,
+		SourceFile: sourceFile,
+		UID:        uid,
+	})
+}
+
+func (tl *TraversalLogger) LogPlatformFilter(modulePath, platform, nodeType, sourceFile string, filtered bool, reason string) {
+	if !tl.IsEnabled() || !tl.IsToolDiagEnabled() {
+		return
+	}
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+
+	tl.platformFilterLogs = append(tl.platformFilterLogs, PlatformFilterLog{
+		ModulePath: modulePath,
+		Platform:   platform,
+		NodeType:   nodeType,
+		SourceFile: sourceFile,
+		Filtered:   filtered,
 		Reason:     reason,
 	})
 }
@@ -195,6 +309,10 @@ func (tl *TraversalLogger) OutputSummary() {
 		fmt.Println()
 	}
 
+	if tl.IsToolDiagEnabled() {
+		tl.outputToolModuleSummary()
+	}
+
 	if tl.IsEvalTracingEnabled() && len(tl.evalVarTraces) > 0 {
 		fmt.Println("\n======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========")
 
@@ -226,6 +344,91 @@ func (tl *TraversalLogger) OutputSummary() {
 	fmt.Println("======================== END SUMMARY ========================")
 }
 
+func (tl *TraversalLogger) outputToolModuleSummary() {
+	fmt.Println("\n======== TOOL MODULE LOADING DIAGNOSTIC SUMMARY ========")
+
+	if len(tl.toolModuleLoads) == 0 {
+		fmt.Println("No tool modules loaded.")
+	} else {
+		loadedTools := make(map[string]bool)
+		for _, tml := range tl.toolModuleLoads {
+			if tml.Loaded {
+				loadedTools[tml.ToolPath] = true
+			}
+		}
+
+		fmt.Printf("Tool modules discovered: %d\n", len(loadedTools))
+		for toolPath := range loadedTools {
+			fmt.Printf("  - %s\n", toolPath)
+		}
+
+		platformNodes := make(map[string]map[string]int)
+		moduleNodes := make(map[string]map[string]int)
+
+		for _, ncl := range tl.nodeCreationLogs {
+			if platformNodes[ncl.NodeType] == nil {
+				platformNodes[ncl.NodeType] = make(map[string]int)
+			}
+			platformNodes[ncl.NodeType][ncl.Platform]++
+
+			key := ncl.ModulePath + ":" + ncl.NodeType
+			if moduleNodes[key] == nil {
+				moduleNodes[key] = make(map[string]int)
+			}
+			moduleNodes[key][ncl.Platform]++
+		}
+
+		if len(tl.nodeCreationLogs) > 0 {
+			fmt.Println("\n======== EXECUTION NODE CREATION DIAGNOSTIC SUMMARY ========")
+			fmt.Printf("Total nodes created: %d\n", len(tl.nodeCreationLogs))
+
+			fmt.Println("\n--- Nodes by Node Type ---")
+			for nodeType := range platformNodes {
+				total := 0
+				for _, count := range platformNodes[nodeType] {
+					total += count
+				}
+				fmt.Printf("  %s: %d\n", nodeType, total)
+			}
+
+			fmt.Println("\n--- Nodes by Platform ---")
+			platformTotals := make(map[string]int)
+			for _, ncl := range tl.nodeCreationLogs {
+				platformTotals[ncl.Platform]++
+			}
+
+			totalNodes := len(tl.nodeCreationLogs)
+			for platform, count := range platformTotals {
+				percent := float64(count) * 100 / float64(totalNodes)
+				fmt.Printf("  - %s: %d (%.1f%%)\n", platform, count, percent)
+			}
+
+			fmt.Println("\n--- Tool Module Node Details ---")
+			sortedKeys := make([]string, 0, len(moduleNodes))
+			for key := range moduleNodes {
+				if strings.Contains(key, "R6") || strings.Contains(key, "JS") {
+					sortedKeys = append(sortedKeys, key)
+				}
+			}
+
+			sort.Strings(sortedKeys)
+			for _, key := range sortedKeys {
+				platforms := moduleNodes[key]
+				parts := strings.Split(key, ":")
+				modulePath := parts[0]
+				nodeType := parts[1]
+
+				fmt.Printf("%s module %s nodes:\n", modulePath, nodeType)
+				for platform, count := range platforms {
+					fmt.Printf("  - %s: %d nodes\n", platform, count)
+				}
+			}
+
+			fmt.Println("======================== END TOOL MODULE SUMMARY ========================")
+		}
+	}
+}
+
 func (tl *TraversalLogger) GetUnreachableModules() []string {
 	if !tl.IsEnabled() {
 		return nil
@@ -240,10 +443,11 @@ func (tl *TraversalLogger) GetUnreachableModules() []string {
 	return modules
 }
 
-func NewTraversalLogger(enabled bool, evalTracingEnabled bool) *TraversalLogger {
+func NewTraversalLogger(enabled bool, evalTracingEnabled bool, toolDiagEnabled bool) *TraversalLogger {
 	return &TraversalLogger{
 		enabled:            enabled,
 		evalTracingEnabled: evalTracingEnabled,
+		toolDiagEnabled:    toolDiagEnabled,
 		unreachableModules: make(map[string]bool),
 	}
 }

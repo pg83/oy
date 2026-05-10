@@ -14,6 +14,7 @@ type ParseFlagsResult struct {
 	Benchmark    bool
 	DiagPeerdir  bool
 	DiagEval     bool
+	DiagToolMod  bool
 }
 
 func ParseFlags(args []string) (*ParseFlagsResult, error) {
@@ -110,6 +111,11 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 			result.DiagEval = true
 			continue
 		}
+
+		if arg == "--diag-tool-modules" {
+			result.DiagToolMod = true
+			continue
+		}
 	}
 
 	return &ParseFlagsResult{
@@ -121,6 +127,7 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 		Benchmark:    result.Benchmark,
 		DiagPeerdir:  result.DiagPeerdir,
 		DiagEval:     result.DiagEval,
+		DiagToolMod:  result.DiagToolMod,
 	}, nil
 }
 

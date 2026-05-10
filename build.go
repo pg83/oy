@@ -96,7 +96,12 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 
 	be.processPeerDependencies(resolvedModule)
 
-	graphBuilder := NewGraphBuilderWithSourceRoot(be.registry, be.ctx, be.sourceRoot)
+	var graphBuilder *GraphBuilder
+	if be.diag != nil && be.diag.IsToolDiagEnabled() {
+		graphBuilder = NewGraphBuilderWithDiag(be.registry, be.ctx, be.sourceRoot, be.diag)
+	} else {
+		graphBuilder = NewGraphBuilderWithSourceRoot(be.registry, be.ctx, be.sourceRoot)
+	}
 	graph := graphBuilder.BuildGraphFromModules(resolvedModule)
 
 	return graph
@@ -197,8 +202,22 @@ func (be *BuildEngine) processPeerDependencies(module *Module) {
 		}
 	}
 
-	for _, depPath := range module.Dependencies {
-		be.loadModuleAndDependencies(depPath, module.SourcePath)
+	for _, dep := range module.Dependencies {
+		be.loadModuleAndDependencies(dep, module.SourcePath)
+	}
+
+	be.logToolModuleDiscovery(module)
+}
+
+func (be *BuildEngine) logToolModuleDiscovery(module *Module) {
+	if be.diag == nil || !be.diag.IsToolDiagEnabled() {
+		return
+	}
+
+	for _, src := range module.Sources {
+		if strings.HasSuffix(src, ".rl6") {
+			be.diag.LogToolModuleLoad("contrib/tools/ragel6", module.SourcePath, true, "R6", src)
+		}
 	}
 }
 

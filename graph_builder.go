@@ -12,6 +12,7 @@ type GraphBuilder struct {
 	ctx        *ParseContext
 	sourceRoot string
 	config     *BuildConfig
+	diag       *TraversalLogger
 }
 
 func NewGraphBuilder(registry *ModuleRegistry, ctx *ParseContext) *GraphBuilder {
@@ -29,6 +30,16 @@ func NewGraphBuilderWithSourceRoot(registry *ModuleRegistry, ctx *ParseContext, 
 		ctx:        ctx,
 		sourceRoot: sourceRoot,
 		config:     NewBuildConfig(ctx),
+	}
+}
+
+func NewGraphBuilderWithDiag(registry *ModuleRegistry, ctx *ParseContext, sourceRoot string, diag *TraversalLogger) *GraphBuilder {
+	return &GraphBuilder{
+		registry:   registry,
+		ctx:        ctx,
+		sourceRoot: sourceRoot,
+		config:     NewBuildConfig(ctx),
+		diag:       diag,
 	}
 }
 
@@ -238,6 +249,10 @@ func (gb *GraphBuilder) createPlatformExecutionNodes(
 	if len(objectOutputs) > 0 && (module.Type == ModuleTypeProgram || module.Type == ModuleTypeLibrary) {
 		finalNode := gb.createFinalPhaseNode(module, objectOutputs, moduleUIDMap, platformCtx)
 		if finalNode != nil {
+			if gb.diag != nil && gb.diag.IsToolDiagEnabled() {
+				gb.diag.LogNodeCreation(module.SourcePath, string(platformCtx.arch),
+					finalNode.KV["p"], "", finalNode.UID)
+			}
 			nodes = append(nodes, finalNode)
 		}
 	}
@@ -263,32 +278,44 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 		switch nodeType {
 		case "CC":
 			ccNode := gb.createCCNode(module, src, platformCtx)
+			gb.logNodeCreation(module, platformCtx.arch, "CC", src, ccNode.UID)
 			nodes = append(nodes, ccNode)
 			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
 			objectOutputs = append(objectOutputs, objOutput)
 		case "AS":
 			asNode := gb.createASNode(module, src, platformCtx)
+			gb.logNodeCreation(module, platformCtx.arch, "AS", src, asNode.UID)
 			nodes = append(nodes, asNode)
 			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
 			objectOutputs = append(objectOutputs, objOutput)
 		case "JS":
 			jsNode := gb.createJSNode(module, src, platformCtx)
+			gb.logNodeCreation(module, platformCtx.arch, "JS", src, jsNode.UID)
 			nodes = append(nodes, jsNode)
 			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
 			objectOutputs = append(objectOutputs, objOutput)
 		case "R6":
 			r6Node := gb.createR6Node(module, src, platformCtx)
+			gb.logNodeCreation(module, platformCtx.arch, "R6", src, r6Node.UID)
 			nodes = append(nodes, r6Node)
 			outputSrc := strings.Replace(src, ".rl6", ".cpp", 1)
 			objOutput := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, outputSrc+".o")
 			objectOutputs = append(objectOutputs, objOutput)
 		case "CP":
 			cpNode := gb.createCPNode(module, src, platformCtx)
+			gb.logNodeCreation(module, platformCtx.arch, "CP", src, cpNode.UID)
 			nodes = append(nodes, cpNode)
 		}
 	}
 
 	return nodes, objectOutputs
+}
+
+func (gb *GraphBuilder) logNodeCreation(module *Module, arch PlatformArch, nodeType, src, uid string) {
+	if gb.diag == nil || !gb.diag.IsToolDiagEnabled() {
+		return
+	}
+	gb.diag.LogNodeCreation(module.SourcePath, string(arch), nodeType, src, uid)
 }
 
 func (gb *GraphBuilder) determineCompileNodeType(module *Module, src string) string {
