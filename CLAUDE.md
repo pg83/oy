@@ -141,3 +141,22 @@ Catches belong at boundaries such as `main`, goroutine entries, or deliberate fi
 ## Validation
 
 See `ACCEPTANCE.md` for the validation contract, current executable checks, known implementation gaps, graph equality expectations, and performance measurement rules.
+
+## Binary Artifact Prevention
+
+This repository uses a git pre-commit hook to prevent binary artifacts from being committed. To install the hook in your workspace:
+
+```bash
+./setup-precommit-hook.sh
+```
+
+The hook rejects:
+- ELF executables, Mach-O binaries, PE executables
+- Large files (>100KB) with non-whitelisted extensions
+- Binary file formats (except known text types)
+
+Allowed file types:
+- `.go`, `.md`, `.json` (any size)
+- `.txt`, `.sh`, `.mod`, `.sum`
+
+To bypass the hook in emergencies, use `git commit --no-verify`.
