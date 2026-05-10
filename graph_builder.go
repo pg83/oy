@@ -145,6 +145,31 @@ func isCompilableCSource(src string) bool {
 	return isCSource(src) || isCXXSource(src)
 }
 
+func isRagel6Source(src string) bool {
+	return strings.HasSuffix(src, ".rl6")
+}
+
+func isCopyRequiredSource(src string) bool {
+	return strings.Contains(src, "musl.py") || strings.Contains(src, ".pyplugin")
+}
+
+func isJSGenSource(modulePath string) bool {
+	jsGenModules := map[string]bool{
+		"util/charset":       true,
+		"util":               true,
+		"contrib/tools/ragel6": true,
+	}
+	return jsGenModules[modulePath]
+}
+
+func isJSOutputSource(src string) bool {
+	jsOutputs := map[string]bool{
+		"all_charset.cpp":        true,
+		"main.cpp":              true,
+	}
+	return jsOutputs[strings.TrimSuffix(src, filepath.Ext(src))]
+}
+
 func (gb *GraphBuilder) sourceInput(module *Module, src string) string {
 	return "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, src)
 }
@@ -209,7 +234,7 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	var objectOutputs []string
 
 	for _, src := range module.Sources {
-		nodeType := gb.determineCompileNodeType(src)
+		nodeType := gb.determineCompileNodeType(module, src)
 
 		switch nodeType {
 		case "CC":
@@ -222,18 +247,41 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 			nodes = append(nodes, asNode)
 			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
 			objectOutputs = append(objectOutputs, objOutput)
+		case "JS":
+			jsNode := gb.createJSNode(module, src, platformCtx)
+			nodes = append(nodes, jsNode)
+			objOutput := gb.platformObjectOutput(module, src, platformCtx.arch)
+			objectOutputs = append(objectOutputs, objOutput)
+		case "R6":
+			r6Node := gb.createR6Node(module, src, platformCtx)
+			nodes = append(nodes, r6Node)
+			outputSrc := strings.Replace(src, ".rl6", ".cpp", 1)
+			objOutput := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, outputSrc+".o")
+			objectOutputs = append(objectOutputs, objOutput)
+		case "CP":
+			cpNode := gb.createCPNode(module, src, platformCtx)
+			nodes = append(nodes, cpNode)
 		}
 	}
 
 	return nodes, objectOutputs
 }
 
-func (gb *GraphBuilder) determineCompileNodeType(src string) string {
-	if isCompilableCSource(src) {
-		return "CC"
+func (gb *GraphBuilder) determineCompileNodeType(module *Module, src string) string {
+	if isRagel6Source(src) {
+		return "R6"
+	}
+	if isCopyRequiredSource(src) {
+		return "CP"
+	}
+	if isJSGenSource(module.SourcePath) && isJSOutputSource(src) {
+		return "JS"
 	}
 	if strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") {
 		return "AS"
+	}
+	if isCompilableCSource(src) {
+		return "CC"
 	}
 	return ""
 }
@@ -410,6 +458,208 @@ func (gb *GraphBuilder) generateASCommand(
 		gb.sourceInput(module, src),
 		"-o",
 		gb.platformObjectOutput(module, src, arch),
+	}
+}
+
+func (gb *GraphBuilder) createJSNode(
+	module *Module,
+	src string,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, platformCtx.arch, src)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(jsUIDKey))
+	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: gb.determineCCSourceLanguage(src),
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src)
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateJSCommand(module, src),
+			Env:     map[string]string{},
+		},
+	}
+
+	var allInputs []string
+	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/process_command_files.py")
+	for _, s := range module.Sources {
+		if strings.HasSuffix(s, ".cpp") {
+			allInputs = append(allInputs, "$(SOURCE_ROOT)/"+filepath.Join(module.SourcePath, s))
+		}
+	}
+	node.Inputs = allInputs
+	node.Outputs = []string{outputPath}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(jsUIDKey + "_kv")),
+		"p":   "JS",
+		"pc":  "magenta",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateJSCommand(
+	module *Module,
+	src string,
+) []string {
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src)
+
+	args := []string{
+		"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+		"$(SOURCE_ROOT)/build/scripts/gen_join_srcs.py",
+		outputPath,
+		"--ya-start-command-file",
+	}
+
+	for _, s := range module.Sources {
+		if strings.HasSuffix(s, ".cpp") && s != src {
+			args = append(args, filepath.Join(module.SourcePath, s))
+		}
+	}
+
+	return args
+}
+
+func (gb *GraphBuilder) createR6Node(
+	module *Module,
+	src string,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	r6UIDKey := fmt.Sprintf("%s:R6:%s:%s", module.SourcePath, platformCtx.arch, src)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(r6UIDKey))
+	node.SelfUID = NewUID([]byte(r6UIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(r6UIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: "cpp",
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".cpp")
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateR6Command(module, src),
+			Env:     map[string]string{},
+		},
+	}
+
+	node.Inputs = []string{
+		"$(BUILD_ROOT)/contrib/tools/ragel6/ragel6",
+		gb.sourceInput(module, src),
+	}
+	node.Outputs = []string{outputPath}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(r6UIDKey + "_kv")),
+		"p":   "R6",
+		"pc":  "yellow",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateR6Command(
+	module *Module,
+	src string,
+) []string {
+	outputPath := "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".cpp")
+
+	return []string{
+		"$(BUILD_ROOT)/contrib/tools/ragel6/ragel6",
+		"-CT0",
+		"-L",
+		"-I$(SOURCE_ROOT)",
+		"-o",
+		outputPath,
+		gb.sourceInput(module, src),
+	}
+}
+
+func (gb *GraphBuilder) createCPNode(
+	module *Module,
+	src string,
+	platformCtx PlatformAwareContext,
+) *GraphNode {
+	cpUIDKey := fmt.Sprintf("%s:CP:%s:%s", module.SourcePath, platformCtx.arch, src)
+
+	node := NewGraphNode(*platformCtx.ctx)
+
+	node.UID = NewUID([]byte(cpUIDKey))
+	node.SelfUID = NewUID([]byte(cpUIDKey + "_self"))
+	node.StatsUID = NewUID([]byte(cpUIDKey + "_stats"))
+
+	node.Platform = string(platformCtx.arch)
+
+	node.TargetProperties = TargetProperties{
+		ModuleDir:  module.SourcePath,
+		ModuleLang: "cpp",
+		ModuleType: gb.mapModuleTypeToString(module.Type),
+	}
+
+	srcPath := "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, src)
+	var dstPath string
+	if strings.Contains(src, "musl.py") {
+		dstPath = "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src+".pyplugin")
+	} else {
+		dstPath = "$(BUILD_ROOT)/" + filepath.Join(module.SourcePath, src)
+	}
+
+	node.Cmds = []Command{
+		{
+			CmdArgs: gb.generateCPCommand(module, srcPath, dstPath),
+			Env:     map[string]string{},
+		},
+	}
+
+	node.Inputs = []string{
+		"$(SOURCE_ROOT)/build/scripts/fs_tools.py",
+		"$(SOURCE_ROOT)/build/scripts/process_command_files.py",
+		srcPath,
+	}
+	node.Outputs = []string{dstPath}
+	node.Deps = []string{}
+
+	node.KV = map[string]string{
+		"uid": NewUID([]byte(cpUIDKey + "_kv")),
+		"p":   "CP",
+		"pc":  "light-cyan",
+	}
+
+	return node
+}
+
+func (gb *GraphBuilder) generateCPCommand(
+	module *Module,
+	src string,
+	dst string,
+) []string {
+	return []string{
+		"$(YMAKE_PYTHON3-1002064631)/bin/python3",
+		"$(SOURCE_ROOT)/build/scripts/fs_tools.py",
+		"copy",
+		src,
+		dst,
 	}
 }
 
