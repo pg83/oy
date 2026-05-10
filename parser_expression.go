@@ -200,5 +200,9 @@ func ParseConditionExpression(conditionExpr string) *ExpressionAST {
 		ThrowFmt("syntax error at line %d:%d: unexpected token after expression: %s", tok.Line, tok.Col, tok.Type)
 	}
 
+	if expr != nil {
+		expr.SourceText = conditionExpr
+	}
+
 	return expr
 }
