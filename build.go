@@ -12,6 +12,7 @@ type BuildEngine struct {
 	ctx         *ParseContext
 	sourceRoot  string
 	visitedDeps map[string]bool
+	diag        *TraversalLogger
 }
 
 func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
@@ -24,6 +25,20 @@ func NewBuildEngine(ctx *ParseContext, sourceRoot string) *BuildEngine {
 		ctx:         ctx,
 		sourceRoot:  sourceRoot,
 		visitedDeps: make(map[string]bool),
+	}
+}
+
+func NewBuildEngineWithDiag(ctx *ParseContext, sourceRoot string, diag *TraversalLogger) *BuildEngine {
+	registry := NewModuleRegistry()
+	recurser := NewRecurseProcessor(registry, ctx)
+
+	return &BuildEngine{
+		registry:    registry,
+		recurser:    recurser,
+		ctx:         ctx,
+		sourceRoot:  sourceRoot,
+		visitedDeps: make(map[string]bool),
+		diag:        diag,
 	}
 }
 
@@ -141,29 +156,40 @@ func (be *BuildEngine) processPeerDependencies(module *Module) {
 	}
 
 	for _, depPath := range module.Dependencies {
-		be.loadModuleAndDependencies(depPath)
+		be.loadModuleAndDependencies(depPath, module.SourcePath)
 	}
 }
 
-func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
+func (be *BuildEngine) loadModuleAndDependencies(depPath string, parentPath string) {
+	normDep := NormalizedPath(depPath)
+
 	if be.registry.Has(depPath) {
 		return
 	}
 
 	moduleYaMakePath := be.findModuleYaMakeFile(depPath)
 	if moduleYaMakePath == "" {
+		if be.diag != nil {
+			be.diag.LogModuleLoad(normDep, parentPath, false, "file not found")
+		}
 		return
 	}
 
 	var file *File
 	defer func() {
 		if r := recover(); r != nil {
+			if be.diag != nil {
+				be.diag.LogModuleLoad(normDep, parentPath, false, "parse error")
+			}
 			return
 		}
 	}()
 	file = ParseYaMakeFile(moduleYaMakePath)
 
 	if file == nil {
+		if be.diag != nil {
+			be.diag.LogModuleLoad(normDep, parentPath, false, "no modules in file")
+		}
 		return
 	}
 
@@ -181,9 +207,19 @@ func (be *BuildEngine) loadModuleAndDependencies(depPath string) {
 		resolvedModule := ResolveConditionals(module, buildContext, NewMemoryVariableSet())
 		ResolveWhenBlocks(resolvedModule, buildContext, NewMemoryVariableSet())
 
+		normModulePath := NormalizedPath(module.SourcePath)
+
 		if EvaluateBuildCondition(resolvedModule, buildContext, NewMemoryVariableSet()) {
-			be.registry.Register(module.SourcePath, resolvedModule)
+			be.registry.Register(normModulePath, resolvedModule)
+			if be.diag != nil {
+				be.diag.LogModuleLoad(normModulePath, parentPath, true, "")
+			}
+			be.diag.LogPeerdirResolution(parentPath, normDep, true, normModulePath)
 			be.processPeerDependencies(resolvedModule)
+		} else {
+			if be.diag != nil {
+				be.diag.LogModuleLoad(normModulePath, parentPath, false, "BUILD_ONLY_IF condition failed")
+			}
 		}
 	}
 }
@@ -198,8 +234,13 @@ func (be *BuildEngine) findModuleYaMakeFile(modulePath string) string {
 	return ""
 }
 
-func BuildDependencyGraph(targetPath string, ctx ParseContext, sourceRoot string) (*Graph, error) {
-	engine := NewBuildEngine(&ctx, sourceRoot)
+func BuildDependencyGraph(targetPath string, ctx ParseContext, sourceRoot string, diag *TraversalLogger) (*Graph, error) {
+	var engine *BuildEngine
+	if diag != nil {
+		engine = NewBuildEngineWithDiag(&ctx, sourceRoot, diag)
+	} else {
+		engine = NewBuildEngine(&ctx, sourceRoot)
+	}
 
 	graph := engine.BuildDependencyGraph(targetPath)
 

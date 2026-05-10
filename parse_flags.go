@@ -12,6 +12,7 @@ type ParseFlagsResult struct {
 	JSONPath     string
 	ValidatePath string
 	Benchmark    bool
+	DiagPeerdir  bool
 }
 
 func ParseFlags(args []string) (*ParseFlagsResult, error) {
@@ -98,6 +99,11 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 			result.Benchmark = true
 			continue
 		}
+
+		if arg == "--diag-peerdir" {
+			result.DiagPeerdir = true
+			continue
+		}
 	}
 
 	return &ParseFlagsResult{
@@ -107,6 +113,7 @@ func ParseFlags(args []string) (*ParseFlagsResult, error) {
 		JSONPath:     result.JSONPath,
 		ValidatePath: result.ValidatePath,
 		Benchmark:    result.Benchmark,
+		DiagPeerdir:  result.DiagPeerdir,
 	}, nil
 }
 

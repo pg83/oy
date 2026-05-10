@@ -26,7 +26,7 @@ type PerformanceReport struct {
 	RAM       string
 }
 
-func MeasureGraphGeneration(targetPath string, ctx ParseContext, sourceRoot string, runs int) PerformanceReport {
+func MeasureGraphGeneration(targetPath string, ctx ParseContext, sourceRoot string, diag *TraversalLogger, runs int) PerformanceReport {
 	if runs < 3 {
 		runs = 3
 	}
@@ -46,7 +46,7 @@ func MeasureGraphGeneration(targetPath string, ctx ParseContext, sourceRoot stri
 
 	for i := 0; i < runs; i++ {
 		start := time.Now()
-		graph := Throw2(BuildDependencyGraph(targetPath, ctx, sourceRoot))
+		graph := Throw2(BuildDependencyGraph(targetPath, ctx, sourceRoot, diag))
 		duration := time.Since(start)
 
 		report.Runs = append(report.Runs, PerformanceRun{Duration: duration, NodeCount: len(graph.Nodes)})

@@ -123,7 +123,7 @@ func TestCLIBuildTargetMatchesIntegrationTarget(t *testing.T) {
 		TargetPath: resolvedTarget,
 		BuildFlags: make(map[string]string),
 	}
-	cliGraph, cliErr := BuildDependencyGraph(resolvedTarget, ctx, resolvedSourceRoot)
+	cliGraph, cliErr := BuildDependencyGraph(resolvedTarget, ctx, resolvedSourceRoot, nil)
 	if cliErr != nil {
 		t.Fatalf("CLI-style BuildDependencyGraph failed: %v", cliErr)
 	}
@@ -133,7 +133,7 @@ func TestCLIBuildTargetMatchesIntegrationTarget(t *testing.T) {
 		TargetPath: ReferenceTarget,
 		BuildFlags: make(map[string]string),
 	}
-	integrationGraph, integrationErr := BuildDependencyGraph(ReferenceTarget, integrationCtx, SourceRoot)
+	integrationGraph, integrationErr := BuildDependencyGraph(ReferenceTarget, integrationCtx, SourceRoot, nil)
 	if integrationErr != nil {
 		t.Fatalf("integration BuildDependencyGraph failed: %v", integrationErr)
 	}
