@@ -247,6 +247,16 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 	var nodes []*GraphNode
 	var objectOutputs []string
 
+	fmt.Printf("[JS-TRACE] Module: %s | JOIN_SRCS directives: %d\n", module.SourcePath, len(module.JoinSrcsDirectives))
+	for _, jsd := range module.JoinSrcsDirectives {
+		fmt.Printf("[JS-TRACE]   JOIN_SRCS output: %s\n", jsd.OutputFile)
+	}
+	fmt.Printf("[JS-TRACE] Module sources: %d\n", len(module.Sources))
+	for _, src := range module.Sources {
+		fmt.Printf("[JS-TRACE]   Source: %s | isJSOutput: %t | isJoinSrcsOutput: %t\n", src, isJSOutputSource(src), gb.isJoinSrcsOutput(module, src))
+	}
+	fmt.Printf("[JS-TRACE] Module isJSGenSource: %t\n", isJSGenSource(module.SourcePath))
+
 	for _, jsd := range module.JoinSrcsDirectives {
 		jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
 		nodes = append(nodes, jsNode)
