@@ -56,12 +56,6 @@ type PlatformAwareContext struct {
 }
 
 func NewPlatformContexts(ctx *ParseContext, module *Module) []PlatformAwareContext {
-	if module != nil && module.NoPlatform {
-		return []PlatformAwareContext{
-			{ctx: ctx, arch: PlatformX86_64},
-		}
-	}
-
 	return []PlatformAwareContext{
 		{ctx: ctx, arch: PlatformAARCH64},
 		{ctx: ctx, arch: PlatformX86_64},
@@ -232,11 +226,6 @@ func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[st
 	var nodes []*GraphNode
 
 	platformContexts := NewPlatformContexts(gb.ctx, module)
-
-	if module.NoPlatform && len(platformContexts) == 1 {
-		fmt.Printf("NO_PLATFORM module %s: building for target %s only\n",
-			module.SourcePath, platformContexts[0].arch)
-	}
 
 	r6NodesCreated := make(map[string]bool)
 	for _, platformCtx := range platformContexts {
