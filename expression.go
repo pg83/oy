@@ -40,6 +40,7 @@ type Evaluator struct {
 	exprContext string
 	modulePath  string
 	condContext string
+	noPlatform  bool
 }
 
 // NewEvaluator creates an Evaluator bound to the provided VariableSet.
@@ -53,6 +54,10 @@ func NewEvaluator(vars VariableSet) *Evaluator {
 func SetEvaluatorContext(eval *Evaluator, context, modulePath string) {
 	eval.condContext = context
 	eval.modulePath = modulePath
+}
+
+func SetEvaluatorNoPlatform(eval *Evaluator, noPlatform bool) {
+	eval.noPlatform = noPlatform
 }
 
 // Evaluate computes the boolean value of an expression AST. For ExprIdent,
@@ -79,7 +84,10 @@ func (e *Evaluator) Evaluate(expr *ExpressionAST) bool {
 		}
 		result := e.vars.IsTrue(varIdent)
 		if tl := GetGlobalTraversalLogger(); tl != nil && tl.IsEvalTracingEnabled() {
-			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result)
+			archValue := e.vars.GetArchValue()
+			muslValue := e.vars.GetMuslValue()
+			osValue := e.vars.GetOSValue()
+			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result, archValue, muslValue, osValue, e.noPlatform)
 		}
 		return result
 
@@ -193,7 +201,10 @@ func (e *Evaluator) tryEvalCanCastToNumber(expr *ExpressionAST) (float64, bool) 
 		}
 		result := e.vars.IsTrue(varIdent)
 		if tl := GetGlobalTraversalLogger(); tl != nil && tl.IsEvalTracingEnabled() {
-			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result)
+			archValue := e.vars.GetArchValue()
+			muslValue := e.vars.GetMuslValue()
+			osValue := e.vars.GetOSValue()
+			tl.LogEvalVar(varIdent, varValue, e.condContext, e.modulePath, expr.SourceText, result, archValue, muslValue, osValue, e.noPlatform)
 		}
 		if !ok {
 			return 0, true

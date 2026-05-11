@@ -64,6 +64,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 
 		evaluator := NewEvaluator(vars)
 		SetEvaluatorContext(evaluator, "IF", modulePath)
+		SetEvaluatorNoPlatform(evaluator, module.NoPlatform)
 
 		conditionAST := ParseConditionExpression(block.IfBranch.Condition)
 		if evaluator.Evaluate(conditionAST) {
@@ -192,6 +193,7 @@ func EvaluateBuildCondition(module *Module, ctx *BuildContext, vars VariableSet)
 
 	evaluator := NewEvaluator(vars)
 	SetEvaluatorContext(evaluator, "BUILD_ONLY_IF", modulePath)
+	SetEvaluatorNoPlatform(evaluator, module.NoPlatform)
 	conditionAST := ParseConditionExpression(module.BuildCondition.Expression)
 
 	conditionResult := evaluator.Evaluate(conditionAST)
@@ -220,6 +222,7 @@ func ResolveWhenBlocks(module *Module, ctx *BuildContext, vars VariableSet) {
 
 	evaluator := NewEvaluator(vars)
 	SetEvaluatorContext(evaluator, "WHEN", modulePath)
+	SetEvaluatorNoPlatform(evaluator, module.NoPlatform)
 
 	for _, cp := range module.ConditionalPeerdirs {
 		if cp.WhenClause == nil {

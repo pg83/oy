@@ -95,6 +95,11 @@ type EvalVarTrace struct {
 	Context       string
 	ModulePath    string
 	Expression    string
+
+	ArchValue      string
+	MuslValue      bool
+	OSValue        string
+	NoPlatformValue bool
 }
 
 type ToolModuleLoad struct {
@@ -174,7 +179,8 @@ func (tl *TraversalLogger) LogPeerdirResolution(fromModule, toPath string, resol
 	}
 }
 
-func (tl *TraversalLogger) LogEvalVar(varName, varValue, context, modulePath, expression string, result bool) {
+func (tl *TraversalLogger) LogEvalVar(varName, varValue, context, modulePath, expression string,
+	result bool, archValue string, muslValue bool, osValue string, noPlatformValue bool) {
 	if !tl.IsEnabled() || !tl.IsEvalTracingEnabled() {
 		return
 	}
@@ -182,12 +188,16 @@ func (tl *TraversalLogger) LogEvalVar(varName, varValue, context, modulePath, ex
 	defer tl.mu.Unlock()
 
 	tl.evalVarTraces = append(tl.evalVarTraces, EvalVarTrace{
-		VariableName:  varName,
-		VariableValue: varValue,
-		Result:        result,
-		Context:       context,
-		ModulePath:    modulePath,
-		Expression:    expression,
+		VariableName:    varName,
+		VariableValue:  varValue,
+		Result:          result,
+		Context:         context,
+		ModulePath:      modulePath,
+		Expression:      expression,
+		ArchValue:       archValue,
+		MuslValue:       muslValue,
+		OSValue:         osValue,
+		NoPlatformValue: noPlatformValue,
 	})
 }
 
@@ -314,38 +324,119 @@ func (tl *TraversalLogger) OutputSummary() {
 	}
 
 	if tl.IsEvalTracingEnabled() && len(tl.evalVarTraces) > 0 {
-		fmt.Println("\n======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========")
-
-		successCount := 0
-		for _, ev := range tl.evalVarTraces {
-			if ev.Result {
-				successCount++
-			}
-		}
-		fmt.Printf("Total variable evaluations: %d\n", len(tl.evalVarTraces))
-		fmt.Printf("Evaluations resulting in true: %d (%.1f%%)\n", successCount, float64(successCount)*100/float64(len(tl.evalVarTraces)))
-
-		fmt.Println("\n--- Variable Evaluation Details ---")
-		for _, ev := range tl.evalVarTraces {
-			valueStr := ev.VariableValue
-			if valueStr == "" {
-				valueStr = "(unset)"
-			}
-			fmt.Printf("  [%s] %s: %s -> \"%s\" => %v", ev.Context, ev.ModulePath, ev.VariableName, valueStr, ev.Result)
-			if ev.Expression != "" {
-				fmt.Printf(" (expr: %s)", ev.Expression)
-			}
-			fmt.Println()
-		}
-
-		fmt.Println("======================== END EVAL SUMMARY ========================")
+		tl.outputEvalSummary()
 	}
 
 	fmt.Println("======================== END SUMMARY ========================")
 }
 
+func (tl *TraversalLogger) outputEvalSummary() {
+	fmt.Println("\n======== VARIABLE EVALUATION DIAGNOSTIC SUMMARY ========")
+
+	successCount := 0
+	for _, ev := range tl.evalVarTraces {
+		if ev.Result {
+			successCount++
+		}
+	}
+	fmt.Printf("Total variable evaluations: %d\n", len(tl.evalVarTraces))
+	fmt.Printf("Evaluations resulting in true: %d (%.1f%%)\n", successCount, float64(successCount)*100/float64(len(tl.evalVarTraces)))
+
+	archEvalCount := 0
+	muslEvalCount := 0
+	osEvalCount := 0
+	noPlatformEvalCount := 0
+	archTrueCount := 0
+	muslTrueCount := 0
+	osTrueCount := 0
+	noPlatformTrueCount := 0
+
+	for _, ev := range tl.evalVarTraces {
+		if strings.HasPrefix(ev.VariableName, "ARCH_") || strings.HasPrefix(ev.VariableName, "ARCH_") || strings.HasPrefix(ev.VariableName, "ARCH_") || ev.VariableName == "ARCH" {
+			archEvalCount++
+			if ev.Result {
+				archTrueCount++
+			}
+		}
+		if ev.VariableName == "MUSL" {
+			muslEvalCount++
+			if ev.Result {
+				muslTrueCount++
+			}
+		}
+		if strings.HasPrefix(ev.VariableName, "OS_") {
+			osEvalCount++
+			if ev.Result {
+				osTrueCount++
+			}
+		}
+		if ev.VariableName == "NO_PLATFORM" {
+			noPlatformEvalCount++
+			if ev.Result {
+				noPlatformTrueCount++
+			}
+		}
+	}
+
+	fmt.Println("\n--- Platform Variable Distribution ---")
+	fmt.Printf("  ARCH-related evaluations: %d\n", archEvalCount)
+	fmt.Printf("  MUSL-related evaluations: %d\n", muslEvalCount)
+	fmt.Printf("  OS-related evaluations: %d\n", osEvalCount)
+	fmt.Printf("  NO_PLATFORM-related evaluations: %d\n", noPlatformEvalCount)
+
+	fmt.Println("\n--- Platform variable evaluations by result ---")
+	if archEvalCount > 0 {
+		fmt.Printf("  ARCH: true=%d, false=%d\n", archTrueCount, archEvalCount-archTrueCount)
+	} else {
+		fmt.Printf("  ARCH: N/A (0 evaluations)\n")
+	}
+	if muslEvalCount > 0 {
+		fmt.Printf("  MUSL: true=%d, false=%d\n", muslTrueCount, muslEvalCount-muslTrueCount)
+	} else {
+		fmt.Printf("  MUSL: N/A (0 evaluations)\n")
+	}
+	if osEvalCount > 0 {
+		fmt.Printf("  OS:  true=%d, false=%d\n", osTrueCount, osEvalCount-osTrueCount)
+	} else {
+		fmt.Printf("  OS:  N/A (0 evaluations)\n")
+	}
+	if noPlatformEvalCount > 0 {
+		fmt.Printf("  NO_PLATFORM: true=%d, false=%d\n", noPlatformTrueCount, noPlatformEvalCount-noPlatformTrueCount)
+	} else {
+		fmt.Printf("  NO_PLATFORM: N/A (0 evaluations)\n")
+	}
+
+	fmt.Println("\n--- Variable Evaluation Details ---")
+	for _, ev := range tl.evalVarTraces {
+		valueStr := ev.VariableValue
+		if valueStr == "" {
+			valueStr = "(unset)"
+		}
+		fmt.Printf("  [%s] %s: %s -> \"%s\" => %v", ev.Context, ev.ModulePath, ev.VariableName, valueStr, ev.Result)
+		if ev.Expression != "" {
+			fmt.Printf(" (expr: %s)", ev.Expression)
+		}
+		if ev.ArchValue != "" || ev.MuslValue || ev.OSValue != "" {
+			contextParts := []string{}
+			if ev.ArchValue != "" {
+				contextParts = append(contextParts, fmt.Sprintf("arch=%s", ev.ArchValue))
+			}
+			contextParts = append(contextParts, fmt.Sprintf("musl=%v", ev.MuslValue))
+			if ev.OSValue != "" {
+				contextParts = append(contextParts, fmt.Sprintf("os=%s", ev.OSValue))
+			}
+			if ev.NoPlatformValue {
+				contextParts = append(contextParts, "noplatform=true")
+			}
+			fmt.Printf(" [%s]", strings.Join(contextParts, " "))
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("======================== END EVAL SUMMARY ========================")
+}
+
 func (tl *TraversalLogger) outputToolModuleSummary() {
-	fmt.Println("\n======== TOOL MODULE LOADING DIAGNOSTIC SUMMARY ========")
 
 	if len(tl.toolModuleLoads) == 0 {
 		fmt.Println("No tool modules loaded.")

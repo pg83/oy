@@ -12,6 +12,9 @@ type VariableSet interface {
 	GetValue(key string) (string, bool)
 	IsTrue(key string) bool
 	HasKey(key string) bool
+	GetArchValue() string
+	GetMuslValue() bool
+	GetOSValue() string
 }
 
 // MemoryVariableSet provides an in-memory implementation of VariableSet backed
@@ -71,6 +74,18 @@ func (m *MemoryVariableSet) IsTrue(key string) bool {
 func (m *MemoryVariableSet) HasKey(key string) bool {
 	_, ok := m.values[key]
 	return ok
+}
+
+func (m *MemoryVariableSet) GetArchValue() string {
+	return ""
+}
+
+func (m *MemoryVariableSet) GetMuslValue() bool {
+	return false
+}
+
+func (m *MemoryVariableSet) GetOSValue() string {
+	return ""
 }
 
 // BuildContextVariableSet wraps a BuildContext and implements VariableSet, resolving
@@ -207,4 +222,25 @@ func (b *BuildContextVariableSet) resolveLanguage(key string) bool {
 		return false
 	}
 	return strings.ToUpper(b.ctx.Language) == key
+}
+
+func (b *BuildContextVariableSet) GetArchValue() string {
+	return b.ctx.ArchString
+}
+
+func (b *BuildContextVariableSet) GetMuslValue() bool {
+	return b.ctx.Musl
+}
+
+func (b *BuildContextVariableSet) GetOSValue() string {
+	switch b.ctx.Platform {
+	case PlatformLinux:
+		return "linux"
+	case PlatformWindows:
+		return "windows"
+	case PlatformDarwin:
+		return "darwin"
+	default:
+		return ""
+	}
 }

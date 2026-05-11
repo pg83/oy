@@ -159,6 +159,8 @@ func (be *BuildEngine) createBuildContext() *BuildContext {
 		ctx.Flags[flag] = (value == "true" || value == "1" || value == "yes")
 	}
 
+	ctx.Musl = be.ctx.Musl
+
 	return ctx
 }
 
