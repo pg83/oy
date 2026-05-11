@@ -52,6 +52,7 @@ func ResolveConditionals(module *Module, ctx *BuildContext, vars VariableSet) *M
 		ConditionalPeerdirs: append([]*ConditionalPeerdir{}, module.ConditionalPeerdirs...),
 		IncludeDirectives:   append([]*IncludeDirective{}, module.IncludeDirectives...),
 		JoinSrcsDirectives:  append([]*JoinSrcsDirective{}, module.JoinSrcsDirectives...),
+		NoPlatform:          module.NoPlatform,
 	}
 
 	for k, v := range module.Properties {
@@ -151,6 +152,8 @@ func MergeModule(target, source *Module) {
 			target.Recursions = append(target.Recursions, rec)
 		}
 	}
+
+	target.NoPlatform = target.NoPlatform || source.NoPlatform
 }
 
 func sameRecurseDirective(a, b *RecurseDirective) bool {

@@ -564,3 +564,13 @@ func TestLogicalOperatorsNotIdentifiers(t *testing.T) {
 	expectToken(t, l, TokenNot, "NOT", 1, 8)
 	expectEOF(t, l)
 }
+
+func TestLexerNoPlatform(t *testing.T) {
+	input := `NO_PLATFORM()`
+	l := NewLexer(input)
+
+	expectToken(t, l, TokenIdent, "NO_PLATFORM", 1, 1)
+	expectToken(t, l, TokenLParen, "(", 1, 12)
+	expectToken(t, l, TokenRParen, ")", 1, 13)
+	expectEOF(t, l)
+}

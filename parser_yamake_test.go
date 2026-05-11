@@ -466,3 +466,45 @@ END()
 		}
 	}
 }
+
+func TestParserNoPlatform(t *testing.T) {
+	input := `PROGRAM()
+NO_PLATFORM()
+END()
+`
+	parser := NewParser(input, "test.make")
+	file := parser.Parse()
+
+	if len(file.Modules) != 1 {
+		t.Fatal("expected 1 module")
+	}
+
+	module := file.Modules[0]
+	if !module.NoPlatform {
+		t.Errorf("expected NoPlatform to be true")
+	}
+}
+
+func TestParserNoPlatformMultipleDirectives(t *testing.T) {
+	input := `LIBRARY()
+PEERDIR(util)
+NO_PLATFORM()
+SRCS(main.cpp)
+END()
+`
+	parser := NewParser(input, "test.make")
+	file := parser.Parse()
+
+	if len(file.Modules) != 1 {
+		t.Fatal("expected 1 module")
+	}
+
+	module := file.Modules[0]
+	if !module.NoPlatform {
+		t.Errorf("expected NoPlatform to be true")
+	}
+
+	if len(module.Dependencies) != 1 || module.Dependencies[0] != "util" {
+		t.Errorf("expected PEERDIR util")
+	}
+}

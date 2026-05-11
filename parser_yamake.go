@@ -240,6 +240,11 @@ func (p *Parser) parseModule(moduleType ModuleType, sourcePath string) *Module {
 			continue
 		}
 
+		if tok.Value == "NO_PLATFORM" {
+			p.parseNoPlatform(module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -669,6 +674,11 @@ func (p *Parser) ParseModuleFragment() *Module {
 			continue
 		}
 
+		if tok.Value == "NO_PLATFORM" {
+			p.parseNoPlatform(module)
+			continue
+		}
+
 		p.advance()
 	}
 
@@ -791,4 +801,11 @@ func (p *Parser) parseIncludeDirective(module *Module) {
 		FilePath: values[0],
 		Location: loc,
 	})
+}
+
+func (p *Parser) parseNoPlatform(module *Module) {
+	p.expectIdent("NO_PLATFORM")
+	p.expect(TokenLParen)
+	p.expect(TokenRParen)
+	module.NoPlatform = true
 }

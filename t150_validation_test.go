@@ -82,7 +82,7 @@ func TestT150NOPlatformDirectiveParsing(t *testing.T) {
 	}
 
 	t.Logf("NO_PLATFORM() directive found in yasm/ya.make")
-	t.Logf("Current implementation does NOT parse NO_PLATFORM()");
+	t.Logf("Current implementation does NOT parse NO_PLATFORM()")
 	t.Logf("This confirms T-140 finding: NO_PLATFORM() exists but not decoded")
 }
 

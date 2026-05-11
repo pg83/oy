@@ -67,6 +67,7 @@ type Module struct {
 	ConditionalPeerdirs []*ConditionalPeerdir
 	IncludeDirectives   []*IncludeDirective
 	JoinSrcsDirectives  []*JoinSrcsDirective
+	NoPlatform          bool
 }
 
 // RecurseDirective represents a RECURSE or RECURSE_FOR_TESTS directive for including subdirectories.
