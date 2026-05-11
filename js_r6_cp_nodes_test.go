@@ -374,7 +374,8 @@ func TestJoinSrcsNodeInputs(t *testing.T) {
 	gb := NewGraphBuilder(registry, ctx)
 
 	jsd := module.JoinSrcsDirectives[0]
-	jsNode := gb.createJoinSrcsNode(module, jsd)
+	platformCtx := PlatformAwareContext{ctx: ctx, arch: PlatformAARCH64}
+	jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
 
 	if jsNode == nil {
 		t.Fatal("createJoinSrcsNode returned nil")
@@ -382,6 +383,10 @@ func TestJoinSrcsNodeInputs(t *testing.T) {
 
 	if jsNode.KV["p"] != "JS" {
 		t.Errorf("Expected KV.p='JS', got '%s'", jsNode.KV["p"])
+	}
+
+	if jsNode.Platform != string(platformCtx.arch) {
+		t.Errorf("Expected platform='%s', got '%s'", platformCtx.arch, jsNode.Platform)
 	}
 
 	expectedInputs := []string{

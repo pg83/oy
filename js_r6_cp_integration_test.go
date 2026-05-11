@@ -80,7 +80,7 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 		}
 	}
 
-	expectedJS := 1
+	expectedJS := 2
 	expectedR6 := 1
 	expectedCP := 2
 

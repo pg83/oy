@@ -221,11 +221,6 @@ func (gb *GraphBuilder) moduleOutput(module *Module) string {
 func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[string]*Module) []*GraphNode {
 	var nodes []*GraphNode
 
-	for _, jsd := range module.JoinSrcsDirectives {
-		jsNode := gb.createJoinSrcsNode(module, jsd)
-		nodes = append(nodes, jsNode)
-	}
-
 	r6NodesCreated := make(map[string]bool)
 	for _, src := range module.Sources {
 		if isRagel6Source(src) && !r6NodesCreated[src] {
@@ -277,6 +272,12 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 ) ([]*GraphNode, []string) {
 	var nodes []*GraphNode
 	var objectOutputs []string
+
+	for _, jsd := range module.JoinSrcsDirectives {
+		jsNode := gb.createJoinSrcsNode(module, jsd, platformCtx)
+		gb.logNodeCreation(module, platformCtx.arch, "JS", jsd.OutputFile, jsNode.UID)
+		nodes = append(nodes, jsNode)
+	}
 
 	for _, jsd := range module.JoinSrcsDirectives {
 		objOutput := gb.platformObjectOutput(module, jsd.OutputFile, platformCtx.arch)
@@ -639,15 +640,16 @@ func (gb *GraphBuilder) generateJSCommand(
 func (gb *GraphBuilder) createJoinSrcsNode(
 	module *Module,
 	jsd *JoinSrcsDirective,
+	platformCtx PlatformAwareContext,
 ) *GraphNode {
-	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, gb.ctx.Platform, jsd.OutputFile)
+	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, platformCtx.arch, jsd.OutputFile)
 
-	node := NewGraphNode(*gb.ctx)
+	node := NewGraphNode(*platformCtx.ctx)
 
 	node.UID = NewUID([]byte(jsUIDKey))
 	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
 	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
-	node.Platform = gb.ctx.Platform
+	node.Platform = string(platformCtx.arch)
 
 	node.TargetProperties = TargetProperties{
 		ModuleDir:  module.SourcePath,
