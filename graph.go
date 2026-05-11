@@ -11,12 +11,13 @@ import (
 )
 
 type ParseContext struct {
-	Platform   string
-	ArchString string
-	TargetPath string
-	Language   string
-	Musl       bool
-	BuildFlags map[string]string
+	Platform       string
+	ArchString     string
+	TargetPath     string
+	Language       string
+	Musl           bool
+	BuildFlags     map[string]string
+	TargetPlatform string
 }
 
 type Graph struct {

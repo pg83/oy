@@ -201,11 +201,12 @@ func buildParseContext(result *ParseFlagsResult, targetPath string) ParseContext
 		archString = "aarch64"
 	}
 	return ParseContext{
-		Platform:   "linux",
-		ArchString: archString,
-		TargetPath: targetPath,
-		Language:   result.Ctx.Language,
-		Musl:       result.Ctx.Musl,
-		BuildFlags: result.PlatformFlag.ToMap(),
+		Platform:       "linux",
+		ArchString:     archString,
+		TargetPath:     targetPath,
+		Language:       result.Ctx.Language,
+		Musl:           result.Ctx.Musl,
+		BuildFlags:     result.PlatformFlag.ToMap(),
+		TargetPlatform: result.Ctx.TargetPlatform,
 	}
 }

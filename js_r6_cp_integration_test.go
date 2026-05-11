@@ -6,10 +6,11 @@ import (
 
 func TestJSR6CPNodeIntegration(t *testing.T) {
 	ctx := &ParseContext{
-		Platform:   "default-linux-aarch64",
-		TargetPath: "/home/pg/monorepo/yatool_orig",
-		Language:   "cpp",
-		BuildFlags: map[string]string{},
+		Platform:       "default-linux-aarch64",
+		TargetPath:     "/home/pg/monorepo/yatool_orig",
+		Language:       "cpp",
+		BuildFlags:     map[string]string{},
+		TargetPlatform: "default-linux-aarch64",
 	}
 
 	registry := NewModuleRegistry()
@@ -80,9 +81,9 @@ func TestJSR6CPNodeIntegration(t *testing.T) {
 		}
 	}
 
-	expectedJS := 2
+	expectedJS := 1
 	expectedR6 := 1
-	expectedCP := 2
+	expectedCP := 1
 
 	t.Logf("Node types: %+v", nodeTypes)
 
