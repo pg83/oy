@@ -640,14 +640,14 @@ func (gb *GraphBuilder) createJoinSrcsNode(
 	module *Module,
 	jsd *JoinSrcsDirective,
 ) *GraphNode {
-	jsUIDKey := fmt.Sprintf("%s:JS:both:%s", module.SourcePath, jsd.OutputFile)
+	jsUIDKey := fmt.Sprintf("%s:JS:%s:%s", module.SourcePath, gb.ctx.Platform, jsd.OutputFile)
 
 	node := NewGraphNode(*gb.ctx)
 
 	node.UID = NewUID([]byte(jsUIDKey))
 	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
 	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
-	node.Platform = "both"
+	node.Platform = gb.ctx.Platform
 
 	node.TargetProperties = TargetProperties{
 		ModuleDir:  module.SourcePath,
