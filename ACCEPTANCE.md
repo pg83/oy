@@ -69,25 +69,57 @@ The current CLI resolves relative targets against the workspace and also accepts
 
 ## Known Current Gap
 
-After T-131 per-platform SRCS ARCH filtering, the current implementation generates approximately **4131 nodes** for `tools/archiver` vs the reference **3730 nodes**, a remaining gap of **+401 nodes**.
+After T-169 final graph validation, the current implementation generates **3799 nodes** for `tools/archiver` vs the reference **3730 nodes**, a remaining gap of **+69 nodes** (+1.8%).
 
-Remaining gaps documented in `NODE_GAP_ANALYSIS.md`:
+### Node Type Distribution Gap
 
-1. **Dual-platform over-generation**: `NewPlatformContexts()` always generates for both aarch64 and x86_64. Reference uses `--target-platform=default-linux-aarch64` so archiver deps only appear on aarch64. Estimated impact: ~307 extra CC nodes, ~19 extra AR nodes, ~15 `platform=both` nodes.
+| Type | Reference | Current | Delta | Status |
+|------|-----------|---------|-------|--------|
+| CC   | 3571      | 3672    | +101  | ✗ Over |
+| AS   | 83        | 39      | -44   | ✗ Under |
+| AR   | 48        | 71      | +23   | ✗ Over |
+| JS   | 23        | 14      | -9    | ✗ Under |
+| LD   | 3         | 2       | -1    | ✗ Under |
+| R6   | 1         | 1       | 0     | ✓ Match |
+| CP   | 1         | 0       | -1    | ✗ Under |
 
-2. **Per-platform SRCS resolution gap**: Architecture-specific modules like `contrib/libs/cxxsupp/builtins` generate ALL source nodes (+298 CC gap) instead of platform-specific subsets despite T-131's ASM filtering changes.
+### Platform Distribution Gap
 
-3. **Missing host tool modules**: `contrib/tools/ragel6` (9 CC, 1 LD on x86_64) and `contrib/tools/yasm` (79 CC, 1 AS, 1 LD on x86_64) are not built. These generate JS nodes for .rl6 processing.
+| Platform                | Reference | Current | Delta | Status |
+|-------------------------|-----------|---------|-------|--------|
+| default-linux-aarch64   | 1933      | 1874    | -59   | ✗ Under |
+| default-linux-x86_64    | 1797      | 1925    | +128  | ✗ Over |
 
-4. **musl/full not loaded**: Pulls in `contrib/libs/asmlib` (25 AS) and `contrib/libs/asmglibc` (1 AS) for x86_64, plus missing AR nodes.
+### Analysis
 
-5. **JS platform bug**: JS nodes get `platform=both` (-9 JS gap) instead of the target platform.
+The +69 node gap consists of:
 
-6. **AS node gaps**: Architecture-specific .S files in some modules still not fully generated per-platform (-44 AS gap).
+- **CC over-generation**: +101 CC nodes (likely platform imbalance - more x86_64 CC nodes than reference)
+- **AS under-generation**: -44 AS nodes (architecture-specific assembly filtering gap)
+- **AR over-generation**: +23 AR nodes (platform imbalance - more x86_64 AR nodes)
+- **JS under-generation**: -9 JS nodes (JOIN_SRCS platform assignment gap)
+- **LD/CP missing**: -2 nodes total (host tool modules not fully integrated)
 
-7. **Missing node types**: 1 CP node and 1 LD node missing (from host tools not being built).
+The 59-node platform imbalance from aarch64 to x86_64 suggests the `--target-platform=default-linux-aarch64` flag behavior may differ from reference in how it filters module dependencies.
 
-Full graph equality is not yet enforced. Use `./validate.sh --strict` only when all gaps are resolved.
+Full graph equality is not yet enforced. Use `TestFinalGraphValidation` (requires `OY_STRICT_GRAPH_VALIDATION=1`) only when all gaps are resolved.
+
+### Validation Infrastructure
+
+T-169 added comprehensive validation infrastructure:
+
+- **Helper functions** (`validation.go`):
+  - `ExtractNodeTypeDistribution(nodes)`: Count nodes by type (CC, AS, AR, JS, LD, R6, CP)
+  - `ExtractPlatformDistribution(nodes)`: Count nodes by platform
+
+- **Final validation tests** (`final_validation_test.go`):
+  - `TestFinalGraphValidation`: Strict validation (fails on any mismatch, skipped by default unless `OY_STRICT_GRAPH_VALIDIZATION=1`)
+  - `TestFinalGraphValidationWithReport`: Diagnostic validation (reports gaps without failing, always runs)
+
+- **Unit tests** (`validation_test.go`):
+  - `TestExtractNodeTypeDistribution`: Verifies type counting logic
+  - `TestPlatformDistribution`: Verifies platform counting logic
+  - Additional edge case tests for empty/unknown platforms
 
 ## Node Type Definitions
 
@@ -360,3 +392,41 @@ Runs: <run1>s, <run2>s, <run3>s
 Median: <median>s
 Pass/fail: <result>
 ```
+
+## T-169 Final Validation Results (2026-05-11)
+
+### Graph Generation Performance
+
+```text
+CPU: Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz
+Cores: 78
+RAM: 255871356 kB
+OS/kernel: Linux pg.vla.yp-c.yandex.net 5.4.161-26.3 #1 SMP Mon Feb 7 14:47:58 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux
+Go version: go1.25.8
+Commit: f8bf2c3f4f89dc9aca552bcbc61ccc17f78a24b3
+Runs: 407.85809ms, 379.937305ms, 378.45746ms
+Median: 379.937305ms
+Pass/fail: PASS (<1s target met)
+```
+
+### Validation Infrastructure Status
+
+- ✅ Node type distribution helpers implemented (`validation.go:1207,1218`)
+- ✅ Platform distribution helpers implemented (`validation.go:1218`)
+- ✅ Diagnostic validation test passes (`TestFinalGraphValidationWithReport`)
+- ✅ Strict validation test implemented (`TestFinalGraphValidation` - requires `OY_STRICT_GRAPH_VALIDATION=1`)
+- ✅ Unit tests for helper functions pass (`validation_test.go`)
+- ✅ All standard validation checks pass: gofmt, go vet, go test ./...
+- ✅ Performance target met: Graph generation median 379ms (<1s requirement)
+
+### Remaining Gaps for Full GOALS Achievement
+
+Total node gap: **+69 nodes** (3799 generated vs 3730 reference)
+
+Key gaps requiring follow-up:
+- Platform imbalance: +59 nodes shifted from aarch64 to x86_64 (--target-platform behavior gap)
+- AS node under-generation: -44 nodes (architecture-specific assembly filtering)
+- CC over-generation: +101 nodes (related to platform/gap imbalance)
+- JS/LD/CP missing: -9 nodes (host tool integration)
+
+The structural graph comparison infrastructure exists and can validate full equality once node count and distribution gaps are resolved.

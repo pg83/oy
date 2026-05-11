@@ -1203,3 +1203,28 @@ func max(left, right int) int {
 
 	return right
 }
+
+func ExtractNodeTypeDistribution(nodes []ValidationNode) map[string]int {
+	distribution := make(map[string]int)
+
+	for _, node := range nodes {
+		nodeType := node.KV["p"]
+		distribution[nodeType]++
+	}
+
+	return distribution
+}
+
+func ExtractPlatformDistribution(nodes []ValidationNode) map[string]int {
+	distribution := make(map[string]int)
+
+	for _, node := range nodes {
+		platform := node.Platform
+		if platform == "" {
+			platform = "unknown"
+		}
+		distribution[platform]++
+	}
+
+	return distribution
+}

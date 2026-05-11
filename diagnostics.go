@@ -96,9 +96,9 @@ type EvalVarTrace struct {
 	ModulePath    string
 	Expression    string
 
-	ArchValue      string
-	MuslValue      bool
-	OSValue        string
+	ArchValue       string
+	MuslValue       bool
+	OSValue         string
 	NoPlatformValue bool
 }
 
@@ -189,7 +189,7 @@ func (tl *TraversalLogger) LogEvalVar(varName, varValue, context, modulePath, ex
 
 	tl.evalVarTraces = append(tl.evalVarTraces, EvalVarTrace{
 		VariableName:    varName,
-		VariableValue:  varValue,
+		VariableValue:   varValue,
 		Result:          result,
 		Context:         context,
 		ModulePath:      modulePath,
