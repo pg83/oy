@@ -55,7 +55,13 @@ type PlatformAwareContext struct {
 	arch PlatformArch
 }
 
-func NewPlatformContexts(ctx *ParseContext) []PlatformAwareContext {
+func NewPlatformContexts(ctx *ParseContext, module *Module) []PlatformAwareContext {
+	if module != nil && module.NoPlatform {
+		return []PlatformAwareContext{
+			{ctx: ctx, arch: PlatformX86_64},
+		}
+	}
+
 	return []PlatformAwareContext{
 		{ctx: ctx, arch: PlatformAARCH64},
 		{ctx: ctx, arch: PlatformX86_64},
@@ -95,7 +101,11 @@ func (gb *GraphBuilder) BuildGraphFromModules(startModule *Module) *Graph {
 
 	if startModule.Type == ModuleTypeProgram {
 		resultUIDs := []string{}
-		for _, arch := range []PlatformArch{PlatformAARCH64, PlatformX86_64} {
+		targetArches := []PlatformArch{PlatformX86_64}
+		if !startModule.NoPlatform {
+			targetArches = []PlatformArch{PlatformAARCH64, PlatformX86_64}
+		}
+		for _, arch := range targetArches {
 			ldUIDKey := startModule.SourcePath + ":LD:" + string(arch)
 			resultUIDs = append(resultUIDs, NewUID([]byte(ldUIDKey)))
 		}
@@ -221,9 +231,15 @@ func (gb *GraphBuilder) moduleOutput(module *Module) string {
 func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[string]*Module) []*GraphNode {
 	var nodes []*GraphNode
 
-	platformContexts := NewPlatformContexts(gb.ctx)
+	platformContexts := NewPlatformContexts(gb.ctx, module)
+
+	if module.NoPlatform && len(platformContexts) == 1 {
+		fmt.Printf("NO_PLATFORM module %s: building for target %s only\n",
+			module.SourcePath, platformContexts[0].arch)
+	}
 
 	for _, platformCtx := range platformContexts {
+
 		if !gb.isTargetPlatform(platformCtx) {
 			phaseNodes := gb.createPlatformExecutionNodes(module, moduleUIDMap, platformCtx)
 			nodes = append(nodes, phaseNodes...)
@@ -313,6 +329,10 @@ func (gb *GraphBuilder) createCompilePhaseNodes(
 
 		nodeType := gb.determineCompileNodeTypeWithArch(module, src, platformCtx.arch)
 
+		if nodeType == "" {
+			continue
+		}
+
 		switch nodeType {
 		case "CC":
 			ccNode := gb.createCCNode(module, compileSrc, platformCtx)
@@ -366,7 +386,7 @@ func (gb *GraphBuilder) determineCompileNodeType(module *Module, src string) str
 	if isJSGenSource(module.SourcePath) && isJSOutputSource(src) {
 		return "JS"
 	}
-	if strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") {
+	if strings.HasSuffix(strings.ToLower(src), ".s") || strings.HasSuffix(strings.ToLower(src), ".S") || strings.HasSuffix(strings.ToLower(src), ".asm") {
 		return "AS"
 	}
 	if isCompilableCSource(src) {
@@ -390,7 +410,7 @@ func (gb *GraphBuilder) determineCompileNodeTypeWithArch(module *Module, src str
 func isArchSpecificASM(src string, arch PlatformArch) bool {
 	srcLower := strings.ToLower(src)
 
-	isASMFile := strings.HasSuffix(srcLower, ".s") || strings.HasSuffix(srcLower, ".S")
+	isASMFile := strings.HasSuffix(srcLower, ".s") || strings.HasSuffix(srcLower, ".S") || strings.HasSuffix(srcLower, ".asm")
 	if !isASMFile {
 		return true
 	}
@@ -408,6 +428,14 @@ func isArchSpecificASM(src string, arch PlatformArch) bool {
 	}
 
 	if containsX86_64 || containsX86 {
+		return arch == PlatformX86_64
+	}
+
+	if strings.HasSuffix(srcLower, "64.asm") || strings.HasSuffix(srcLower, "64.S") {
+		return arch == PlatformX86_64
+	}
+
+	if strings.HasSuffix(srcLower, "32.asm") || strings.HasSuffix(srcLower, "32.S") {
 		return arch == PlatformX86_64
 	}
 
