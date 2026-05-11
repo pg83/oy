@@ -69,11 +69,25 @@ The current CLI resolves relative targets against the workspace and also accepts
 
 ## Known Current Gap
 
-Full graph equality is not yet enforced by the current tests. Integration tests skip the known failure when the generated graph has fewer nodes than the reference graph.
+After T-131 per-platform SRCS ARCH filtering, the current implementation generates approximately **4131 nodes** for `tools/archiver` vs the reference **3730 nodes**, a remaining gap of **+401 nodes**.
 
-The current implementation generates a module-level graph, currently 12 nodes for `tools/archiver` in the integration summary, while the checked reference graph contains 3730 execution nodes. This is useful implementation progress, not final acceptance.
+Remaining gaps documented in `NODE_GAP_ANALYSIS.md`:
 
-Final completion requires the equality test to fail on any mismatch rather than skip the node-count and structural gap.
+1. **Dual-platform over-generation**: `NewPlatformContexts()` always generates for both aarch64 and x86_64. Reference uses `--target-platform=default-linux-aarch64` so archiver deps only appear on aarch64. Estimated impact: ~307 extra CC nodes, ~19 extra AR nodes, ~15 `platform=both` nodes.
+
+2. **Per-platform SRCS resolution gap**: Architecture-specific modules like `contrib/libs/cxxsupp/builtins` generate ALL source nodes (+298 CC gap) instead of platform-specific subsets despite T-131's ASM filtering changes.
+
+3. **Missing host tool modules**: `contrib/tools/ragel6` (9 CC, 1 LD on x86_64) and `contrib/tools/yasm` (79 CC, 1 AS, 1 LD on x86_64) are not built. These generate JS nodes for .rl6 processing.
+
+4. **musl/full not loaded**: Pulls in `contrib/libs/asmlib` (25 AS) and `contrib/libs/asmglibc` (1 AS) for x86_64, plus missing AR nodes.
+
+5. **JS platform bug**: JS nodes get `platform=both` (-9 JS gap) instead of the target platform.
+
+6. **AS node gaps**: Architecture-specific .S files in some modules still not fully generated per-platform (-44 AS gap).
+
+7. **Missing node types**: 1 CP node and 1 LD node missing (from host tools not being built).
+
+Full graph equality is not yet enforced. Use `./validate.sh --strict` only when all gaps are resolved.
 
 ## Node Type Definitions
 
