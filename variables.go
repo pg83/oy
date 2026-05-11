@@ -121,6 +121,20 @@ func (b *BuildContextVariableSet) IsTrue(key string) bool {
 		return b.ctx.ArchString == "x86_64"
 	case "ARCH_AARCH64":
 		return b.ctx.ArchString == "aarch64"
+	case "ARCH_ARM64":
+		return b.ctx.ArchString == "arm64" || b.ctx.ArchString == "aarch64"
+	case "ARCH_ARM6":
+		return b.ctx.ArchString == "armv6"
+	case "ARCH_ARM7":
+		return b.ctx.ArchString == "armv7"
+	case "ARCH_ARM":
+		return strings.HasPrefix(b.ctx.ArchString, "arm") || b.ctx.ArchString == "aarch64"
+	case "ARCH_PPC64LE":
+		return b.ctx.ArchString == "ppc64le"
+	case "ARCH_RISCV32":
+		return b.ctx.ArchString == "riscv32"
+	case "ARCH_RISCV64":
+		return b.ctx.ArchString == "riscv64"
 	case "MSVC":
 		return b.ctx.Compiler == CompilerMSVC
 	case "CLANG":
@@ -146,6 +160,8 @@ func (b *BuildContextVariableSet) HasKey(key string) bool {
 	case "OS_LINUX", "OS_WINDOWS", "OS_DARWIN", "OS_MAC":
 		return true
 	case "ARCH_TYPE_64", "ARCH_TYPE_32", "ARCH_X86_64", "ARCH_AARCH64":
+		return true
+	case "ARCH_ARM64", "ARCH_ARM6", "ARCH_ARM7", "ARCH_ARM", "ARCH_PPC64LE", "ARCH_RISCV32", "ARCH_RISCV64":
 		return true
 	case "MSVC", "CLANG", "GCC":
 		return true

@@ -448,6 +448,11 @@ func (p *Parser) parseConditional(module *Module) {
 				continue
 			}
 
+			if tok.Value == "IF" {
+				p.parseConditional(elseIfBranch.Module)
+				continue
+			}
+
 			if tok.Value == "INCLUDE" {
 				p.parseIncludeDirective(elseIfBranch.Module)
 				continue
