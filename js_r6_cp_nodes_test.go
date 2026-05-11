@@ -69,7 +69,6 @@ func TestCreateJSNode(t *testing.T) {
 	}
 
 	expectedInputs := []string{
-		"$(SOURCE_ROOT)/build/scripts/process_command_files.py",
 		"$(SOURCE_ROOT)/util/charset/generated/unidata.cpp",
 		"$(SOURCE_ROOT)/util/charset/recode_result.cpp",
 	}
@@ -390,7 +389,6 @@ func TestJoinSrcsNodeInputs(t *testing.T) {
 	}
 
 	expectedInputs := []string{
-		"$(SOURCE_ROOT)/build/scripts/process_command_files.py",
 		"$(SOURCE_ROOT)/util/charset/generated/unidata.cpp",
 		"$(SOURCE_ROOT)/util/charset/recode_result.cpp",
 	}

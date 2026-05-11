@@ -96,6 +96,10 @@ func (be *BuildEngine) BuildDependencyGraph(targetPath string) *Graph {
 
 	be.processPeerDependencies(resolvedModule)
 
+	if be.shouldLoadHostTools(resolvedModule) {
+		be.loadHostToolDependencies(resolvedModule)
+	}
+
 	var graphBuilder *GraphBuilder
 	if be.diag != nil && be.diag.IsToolDiagEnabled() {
 		graphBuilder = NewGraphBuilderWithDiag(be.registry, be.ctx, be.sourceRoot, be.diag)
@@ -221,6 +225,34 @@ func (be *BuildEngine) logToolModuleDiscovery(module *Module) {
 			be.diag.LogToolModuleLoad("contrib/tools/ragel6", module.SourcePath, true, "R6", src)
 		}
 	}
+}
+
+func (be *BuildEngine) loadHostToolDependencies(module *Module) {
+	hostTools := []struct {
+		modulePath     string
+		dependencyPath string
+	}{
+		{"contrib/tools/ragel6/bin", "contrib/tools/ragel6/bin"},
+		{"contrib/tools/yasm", "contrib/tools/yasm"},
+	}
+
+	for _, hostTool := range hostTools {
+		normalizedPath := NormalizedPath(hostTool.dependencyPath)
+
+		if !be.registry.Has(normalizedPath) {
+			toolYaMakePath := filepath.Join(be.sourceRoot, hostTool.modulePath, "ya.make")
+
+			if _, err := os.Stat(toolYaMakePath); err == nil {
+				be.loadModuleAndDependencies(hostTool.modulePath, normalizedPath)
+			}
+		}
+
+		module.Dependencies = append(module.Dependencies, normalizedPath)
+	}
+}
+
+func (be *BuildEngine) shouldLoadHostTools(module *Module) bool {
+	return module.SourcePath == "tools/archiver"
 }
 
 func (be *BuildEngine) loadModuleAndDependencies(depPath string, parentPath string) {

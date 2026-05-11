@@ -238,6 +238,7 @@ func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[st
 			module.SourcePath, platformContexts[0].arch)
 	}
 
+	r6NodesCreated := make(map[string]bool)
 	for _, platformCtx := range platformContexts {
 
 		if !gb.isTargetPlatform(platformCtx) {
@@ -246,7 +247,6 @@ func (gb *GraphBuilder) createExecutionNodes(module *Module, moduleUIDMap map[st
 			continue
 		}
 
-		r6NodesCreated := make(map[string]bool)
 		for _, src := range module.Sources {
 			if isRagel6Source(src) && !r6NodesCreated[src] {
 				r6Node := gb.createR6Node(module, src, platformCtx)
@@ -630,7 +630,11 @@ func (gb *GraphBuilder) createJSNode(
 	node.SelfUID = NewUID([]byte(jsUIDKey + "_self"))
 	node.StatsUID = NewUID([]byte(jsUIDKey + "_stats"))
 
-	node.Platform = string(platformCtx.arch)
+	if gb.ctx.TargetPlatform != "" {
+		node.Platform = gb.ctx.TargetPlatform
+	} else {
+		node.Platform = string(platformCtx.arch)
+	}
 
 	node.TargetProperties = TargetProperties{
 		ModuleDir:  module.SourcePath,
@@ -647,11 +651,15 @@ func (gb *GraphBuilder) createJSNode(
 		},
 	}
 
+	seenInputs := make(map[string]bool)
 	var allInputs []string
-	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/process_command_files.py")
 	for _, s := range module.Sources {
 		if strings.HasSuffix(s, ".cpp") {
-			allInputs = append(allInputs, "$(SOURCE_ROOT)/"+filepath.Join(module.SourcePath, s))
+			inputPath := "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, s)
+			if !seenInputs[inputPath] {
+				seenInputs[inputPath] = true
+				allInputs = append(allInputs, inputPath)
+			}
 		}
 	}
 	node.Inputs = allInputs
@@ -718,10 +726,14 @@ func (gb *GraphBuilder) createJoinSrcsNode(
 		},
 	}
 
+	seenInputs := make(map[string]bool)
 	var allInputs []string
-	allInputs = append(allInputs, "$(SOURCE_ROOT)/build/scripts/process_command_files.py")
 	for _, inputFile := range jsd.InputFiles {
-		allInputs = append(allInputs, "$(SOURCE_ROOT)/"+filepath.Join(module.SourcePath, inputFile))
+		inputPath := "$(SOURCE_ROOT)/" + filepath.Join(module.SourcePath, inputFile)
+		if !seenInputs[inputPath] {
+			seenInputs[inputPath] = true
+			allInputs = append(allInputs, inputPath)
+		}
 	}
 	node.Inputs = allInputs
 	node.Outputs = []string{outputPath}

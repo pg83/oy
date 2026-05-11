@@ -48,16 +48,17 @@ func (t *TransitiveResolver) computeTransitiveDepsDFS(module *Module, result map
 		normalizedPath := t.normalizeDepPath(module.SourcePath, depPath)
 
 		depModule := t.registry.Get(normalizedPath)
-		if depModule == nil {
-			continue
-		}
+		if depModule != nil {
+			uid := NewUID([]byte(depModule.SourcePath))
 
-		uid := NewUID([]byte(depModule.SourcePath))
+			if _, exists := result[uid]; !exists {
+				result[uid] = struct{}{}
 
-		if _, exists := result[uid]; !exists {
+				t.computeTransitiveDepsDFS(depModule, result, visited)
+			}
+		} else {
+			uid := NewUID([]byte(normalizedPath))
 			result[uid] = struct{}{}
-
-			t.computeTransitiveDepsDFS(depModule, result, visited)
 		}
 	}
 }
