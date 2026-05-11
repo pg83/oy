@@ -222,6 +222,37 @@ func TestGraphGenerationPerformance(t *testing.T) {
 	}
 }
 
+func TestPerformanceRegressionGuard(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping performance regression test in short mode")
+	}
+
+	ctx := ParseContext{
+		Platform:   "linux",
+		Musl:       true,
+		Language:   "",
+		TargetPath: ReferenceTarget,
+		BuildFlags: make(map[string]string),
+	}
+
+	report := MeasureGraphGeneration(ReferenceTarget, ctx, SourceRoot, nil, 5)
+
+	if len(report.Runs) == 0 || report.Runs[0].NodeCount == 0 {
+		t.Fatal("Generated graph has zero nodes")
+	}
+
+	if report.Median > time.Second {
+		t.Errorf("Performance regression: median %v exceeds 1 second target", report.Median)
+	}
+
+	expectedRange := 500 * time.Millisecond
+	if report.Median > expectedRange {
+		t.Logf("WARNING: median %v is slower than expected range %v", report.Median, expectedRange)
+	}
+
+	t.Logf("Performance OK: median %v for %d nodes", report.Median, report.Runs[0].NodeCount)
+}
+
 // Step 2: Profile JS/AS Node Creation Impact
 
 // BenchmarkJSNodeCreation measures createJSNode latency per source
