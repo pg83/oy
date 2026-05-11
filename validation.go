@@ -1209,7 +1209,11 @@ func ExtractNodeTypeDistribution(nodes []ValidationNode) map[string]int {
 
 	for _, node := range nodes {
 		nodeType := node.KV["p"]
-		distribution[nodeType]++
+		if nodeType != "" {
+			distribution[nodeType]++
+		} else {
+			distribution["UNKNOWN"]++
+		}
 	}
 
 	return distribution
@@ -1220,10 +1224,11 @@ func ExtractPlatformDistribution(nodes []ValidationNode) map[string]int {
 
 	for _, node := range nodes {
 		platform := node.Platform
-		if platform == "" {
-			platform = "unknown"
+		if platform != "" {
+			distribution[platform]++
+		} else {
+			distribution["UNKNOWN"]++
 		}
-		distribution[platform]++
 	}
 
 	return distribution

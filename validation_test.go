@@ -339,3 +339,106 @@ func writeRawGraph(t *testing.T, content string) string {
 
 	return path
 }
+
+func syntheticNodeWithKV(uid, moduleDir, nodeType string) ValidationNode {
+	node := syntheticNode(uid, moduleDir, nil, []string{"out"})
+	if node.KV == nil {
+		node.KV = make(map[string]string)
+	}
+	node.KV["p"] = nodeType
+	return node
+}
+
+func syntheticNodeWithPlatform(uid, platform, nodeType string) ValidationNode {
+	node := syntheticNode(uid, "m", nil, []string{"out"})
+	node.Platform = platform
+	if node.KV == nil {
+		node.KV = make(map[string]string)
+	}
+	node.KV["p"] = nodeType
+	return node
+}
+
+func TestExtractNodeTypeDistribution(t *testing.T) {
+	nodes := []ValidationNode{
+		syntheticNodeWithKV("node1", "m", "CC"),
+		syntheticNodeWithKV("node2", "m", "AS"),
+		syntheticNodeWithKV("node3", "m", "AR"),
+		syntheticNodeWithKV("node4", "m", "JS"),
+		syntheticNodeWithKV("node5", "m", "LD"),
+		syntheticNodeWithKV("node6", "m", "R6"),
+		syntheticNodeWithKV("node7", "m", "CP"),
+		syntheticNodeWithKV("node8", "m", "CC"),
+		syntheticNodeWithKV("node9", "m", ""),
+	}
+
+	dist := ExtractNodeTypeDistribution(nodes)
+
+	expected := map[string]int{
+		"CC":      2,
+		"AS":      1,
+		"AR":      1,
+		"JS":      1,
+		"LD":      1,
+		"R6":      1,
+		"CP":      1,
+		"UNKNOWN": 1,
+	}
+
+	for nodeType, expectedCount := range expected {
+		if dist[nodeType] != expectedCount {
+			t.Errorf("Type %s: expected %d, got %d", nodeType, expectedCount, dist[nodeType])
+		}
+	}
+
+	if len(dist) != len(expected) {
+		t.Errorf("Expected %d node types, got %d", len(expected), len(dist))
+	}
+}
+
+func TestExtractNodeTypeDistribution_Empty(t *testing.T) {
+	nodes := []ValidationNode{}
+	dist := ExtractNodeTypeDistribution(nodes)
+
+	if len(dist) != 0 {
+		t.Errorf("Expected empty distribution, got %v", dist)
+	}
+}
+
+func TestExtractPlatformDistribution(t *testing.T) {
+	nodes := []ValidationNode{
+		syntheticNodeWithPlatform("node1", "default-linux-aarch64", "CC"),
+		syntheticNodeWithPlatform("node2", "default-linux-x86_64", "CC"),
+		syntheticNodeWithPlatform("node3", "default-linux-aarch64", "AS"),
+		syntheticNodeWithPlatform("node4", "default-linux-x86_64", "AS"),
+		syntheticNodeWithPlatform("node5", "default-linux-aarch64", "AR"),
+		syntheticNodeWithPlatform("node6", "", "LD"),
+	}
+
+	dist := ExtractPlatformDistribution(nodes)
+
+	expected := map[string]int{
+		"default-linux-aarch64": 3,
+		"default-linux-x86_64":  2,
+		"UNKNOWN":               1,
+	}
+
+	for platform, expectedCount := range expected {
+		if dist[platform] != expectedCount {
+			t.Errorf("Platform %s: expected %d, got %d", platform, expectedCount, dist[platform])
+		}
+	}
+
+	if len(dist) != len(expected) {
+		t.Errorf("Expected %d platforms, got %d", len(expected), len(dist))
+	}
+}
+
+func TestExtractPlatformDistribution_Empty(t *testing.T) {
+	nodes := []ValidationNode{}
+	dist := ExtractPlatformDistribution(nodes)
+
+	if len(dist) != 0 {
+		t.Errorf("Expected empty distribution, got %v", dist)
+	}
+}
